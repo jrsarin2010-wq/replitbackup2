@@ -1,0 +1,53 @@
+{
+  "timestamp": "2026-04-22T12:08:26.405Z",
+  "summary": {
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
+    "successRate": 50
+  },
+  "professionals": {
+    "ana": {
+      "id": 48,
+      "consultationFee": "150.00",
+      "pixMode": "required"
+    },
+    "marcos": {
+      "id": 49,
+      "consultationFee": "200.00",
+      "pixEnabled": false
+    },
+    "roberto": {
+      "id": 50,
+      "chargesConsultation": false,
+      "pixMode": "optional"
+    }
+  },
+  "tests": [
+    {
+      "name": "C14 — Paciente reconhecido: IA usa nome e não faz triagem de convênio",
+      "block": "BLOCO 4 — Paciente",
+      "status": "PASS",
+      "duration": 3108,
+      "details": "OK",
+      "evidence": {
+        "input": "oi, sou o João, preciso remarcar minha consulta",
+        "aiResponse": "Oi, João! Tudo bem?\n\nVi aqui que sua consulta já tá marcada pra amanhã, 23/04 às 11h. Se quiser, eu posso te ajudar a remarcar certinho.",
+        "dbState": {
+          "patientId": 32,
+          "appointmentId": 118
+        }
+      }
+    },
+    {
+      "name": "C15 — Paciente cancela: tom acolhedor + status cancelled no banco",
+      "block": "BLOCO 4 — Paciente",
+      "status": "FAIL",
+      "duration": 20160,
+      "details": "Assertion failed: Esperava ≥2 respostas, recebeu 1",
+      "evidence": {
+        "input": "preciso cancelar minha consulta de amanhã, surgiu um imprevisto no trabalho"
+      }
+    }
+  ]
+}

@@ -1,0 +1,516 @@
+# Prompt — Simulação E2E v4 — Diagnóstico Completo
+## Inclui bugs novos identificados na análise do código
+
+## Objetivo
+Rodar uma simulação completa que testa os fluxos críticos e verifica
+especificamente os bugs identificados na análise de código desta versão.
+A Replit deve criar o arquivo, rodar e reportar o diagnóstico completo
+com as respostas REAIS da IA em cada cenário.
+
+---
+
+## Arquivo a criar
+`artifacts/api-server/src/tests/e2e-v4-diagnostico.ts`
+Seguir EXATAMENTE o padrão do `e2e-test.ts` existente.
+
+---
+
+## A Clínica de Teste — "Clínica OdontoVida"
+
+```
+Nome: Clínica OdontoVida
+IA: Sofia
+Aceita convênio: SIM
+WhatsApp: MockProvider
+Plano: professional
+```
+
+### Profissional 1 — Dra. Ana Beatriz (Clínico Geral)
+```
+consultationFee: "150.00"
+chargesConsultation: true
+pixEnabled: true
+pixMode: "required"
+pixKey: "ana@odontovida.com.br"
+pixKeyType: "email"
+pixBank: "Nubank"
+acceptsInsurance: false
+insuranceDays: ""
+workingDays: "1,3,5,6"  (Seg, Qua, Sex, Sáb)
+workingHoursStart: "08:00"
+workingHoursEnd: "18:00"
+```
+
+### Profissional 2 — Dr. Marcos Oliveira (Ortodontia)
+```
+consultationFee: "200.00"
+chargesConsultation: true
+pixEnabled: false
+acceptsInsurance: true
+insurancePlans: "Unimed, Amil, Bradesco Dental"
+insuranceDays: "1,3"  (Seg, Qua)
+workingDays: "1,3,4,5"  (Seg, Qua, Qui, Sex)
+workingHoursStart: "09:00"
+workingHoursEnd: "17:00"
+```
+
+### Profissional 3 — Dr. Roberto Santos (Implantodontia)
+```
+consultationFee: "300.00"
+chargesConsultation: false
+pixEnabled: true
+pixMode: "optional"
+pixKey: "11999887766"
+pixKeyType: "phone"
+pixBank: "Itaú"
+acceptsInsurance: false
+workingDays: "2,4"  (Ter, Qui)
+workingHoursStart: "08:00"
+workingHoursEnd: "17:00"
+```
+
+---
+
+## BLOCO 1 — FALSOS POSITIVOS DE CONVÊNIO (bugs identificados no código)
+
+**Cenário 1 — "pelo plano que vi no site" NÃO deve ativar convênio**
+```
+Lead: "oi, vi que vocês trabalham pelo plano de tratamento em etapas"
+Esperado:
+  ✓ mode = CONVENIO_TRIAGEM ou PARTICULAR_SPIN (não CONVENIO_AGENDAR)
+  ✓ IA faz triagem normal — pergunta se é plano ou particular
+  ✓ NÃO trata como convênio confirmado
+  ✗ FALHA se IA responder com tom de convênio direto
+
+Verificar nos logs:
+  - mode_resolved NÃO é "CONVENIO_AGENDAR"
+  - reason NÃO é "insurance_confirmed"
+```
+
+**Cenário 2 — "pelo plano de pagamento" NÃO deve ativar convênio**
+```
+Lead: "quero saber se posso pagar pelo plano de pagamento parcelado"
+Esperado:
+  ✓ IA entende que é dúvida sobre parcelamento
+  ✓ NÃO ativa modo convênio
+  ✓ Responde sobre formas de pagamento ou faz triagem normal
+  ✗ FALHA se IA perguntar "qual é o seu plano odontológico?"
+```
+
+**Cenário 3 — "no plano de melhorar" NÃO deve ativar convênio**
+```
+Lead: "estou no plano de melhorar minha saúde bucal esse ano"
+Esperado:
+  ✓ IA reconhece como lead particular motivado
+  ✓ Faz triagem (plano ou particular?) antes de avançar
+  ✗ FALHA se IA tratar como convênio confirmado
+```
+
+**Cenário 4 — "com plano de agendar" NÃO deve ativar convênio**
+```
+Lead: "oi, estou com plano de agendar uma consulta essa semana"
+Esperado:
+  ✓ IA faz triagem normal
+  ✗ FALHA se IA entrar em modo convênio
+```
+
+**Cenário 5 — Convênio REAL deve ser detectado corretamente**
+```
+Lead: "uso Unimed, quero agendar"
+Esperado:
+  ✓ mode = CONVENIO_AGENDAR (Unimed está no INSURANCE_DECLARED_PATTERN)
+  ✓ IA não cobra consulta
+  ✓ IA não envia PIX
+  ✓ IA direciona para Dr. Marcos (aceita Unimed)
+  ✗ FALHA se tratar como particular
+```
+
+---
+
+## BLOCO 2 — EMPATIA E PROTOCOLO DE PRIMEIRO CONTATO
+
+**Cenário 6 — Lead com dor: empatia antes de triagem**
+```
+Lead: "oi, to com dor de dente horrível"
+Esperado:
+  ✓ IA acolhe a dor PRIMEIRO ("que situação difícil...", "imagino o desconforto...")
+  ✓ NÃO pergunta plano/particular na PRIMEIRA resposta
+  ✓ NÃO oferece horários na primeira resposta
+  ✓ Pergunta o que está sentindo ou menciona urgência
+  ✗ FALHA se começar com "você usa convênio ou particular?"
+
+Verificar:
+  - Resposta contém palavra de empatia antes de qualquer pergunta
+  - mode = CONVENIO_TRIAGEM (não pula para CONVENIO_AGENDAR)
+```
+
+**Cenário 7 — Lead com medo: empatia validada**
+```
+Lead: "preciso ir ao dentista mas fico apavorado"
+Esperado:
+  ✓ IA valida o medo sem minimizar
+  ✓ Tom acolhedor antes de qualquer oferta
+  ✗ FALHA se ignorar o medo e ir direto para triagem
+```
+
+**Cenário 8 — Primeiro contato neutro: apresentação correta**
+```
+Lead: "oi"
+Esperado:
+  ✓ IA se apresenta como Sofia da Clínica OdontoVida
+  ✓ NÃO pergunta plano/particular na apresentação
+  ✓ Pergunta "como posso te ajudar?"
+  ✗ FALHA se mencionar plano/particular já na apresentação
+```
+
+---
+
+## BLOCO 3 — PROTOCOLO LEAD PARTICULAR + PIX
+
+**Cenário 9 — Lead particular: triagem → SPIN → PIX obrigatório**
+```
+Lead: "quero marcar consulta"
+IA: [pergunta plano ou particular]
+Lead: "vou pagar particular"
+Esperado:
+  ✓ mode muda para PARTICULAR_SPIN
+  ✓ IA aplica SPIN (pergunta sobre situação/problema)
+  ✓ NÃO vai direto para horários
+  ✓ paymentType = "private" salvo no banco
+
+Lead: [aceita horário da Dra. Ana, quarta 14h]
+Esperado:
+  ✓ Agendamento criado com Dra. Ana
+  ✓ IA envia chave PIX "ana@odontovida.com.br" proativamente
+  ✓ IA menciona valor R$150
+  ✓ IA pede comprovante antes de confirmar
+  ✗ FALHA se não enviar PIX
+  ✗ FALHA se enviar PIX de outro profissional
+```
+
+**Cenário 10 — PIX obrigatório: confirmação só após comprovante**
+```
+[Continuar cenário 9 — lead agendou mas ainda não enviou comprovante]
+Lead: "ok, marquei aqui então"
+Esperado:
+  ✓ IA NÃO confirma o agendamento como definitivo
+  ✓ IA relembra que precisa do comprovante PIX
+  ✓ Tom gentil, não burocrático
+  ✗ FALHA se confirmar agendamento sem comprovante
+```
+
+**Cenário 11 — Dr. Roberto: consulta gratuita, PIX opcional**
+```
+Lead: "quero avaliar implante, pago particular"
+Esperado:
+  ✓ IA menciona Dr. Roberto
+  ✓ IA informa que consulta de avaliação é GRATUITA
+  ✓ NÃO envia PIX obrigatório
+  ✓ Confirma agendamento imediatamente (sem esperar comprovante)
+  ✗ FALHA se cobrar R$300
+  ✗ FALHA se tratar PIX como obrigatório
+```
+
+---
+
+## BLOCO 4 — PROTOCOLO CONVÊNIO
+
+**Cenário 12 — Lead convênio Unimed: fluxo correto**
+```
+Lead: "oi, uso Unimed"
+Esperado:
+  ✓ IA detecta Unimed, ativa CONVENIO_AGENDAR
+  ✓ mode = CONVENIO_AGENDAR
+  ✓ IA acolhe com empatia, não com SPIN
+  ✓ Direciona para Dr. Marcos (aceita Unimed)
+  ✓ NÃO menciona valor da consulta
+  ✓ NÃO envia PIX (Dr. Marcos não tem PIX)
+  ✓ Oferece horários Segunda ou Quarta (dias de convênio)
+```
+
+**Cenário 13 — Lead convênio pede quinta (dia não permitido)**
+```
+Lead: "uso Unimed, pode ser quinta?"
+Esperado:
+  ✓ IA informa que convênio é somente Seg e Qua com Dr. Marcos
+  ✓ Oferece Segunda ou Quarta como alternativa
+  ✓ NÃO marca convênio na quinta
+  ✗ FALHA se confirmar quinta para convênio
+```
+
+**Cenário 14 — Lead convênio, plano não aceito**
+```
+Lead: "uso plano Hapvida"
+Esperado:
+  ✓ IA verifica lista de planos aceitos (Unimed, Amil, Bradesco Dental)
+  ✓ IA informa que Hapvida não é aceito
+  ✓ Lista os planos aceitos
+  ✓ Oferece atendimento particular como alternativa
+  ✗ FALHA se confirmar Hapvida como aceito
+```
+
+**Cenário 15 — Lead responde "sim" após triagem (contextualInsuranceAffirmation)**
+```
+Lead: "oi, quero marcar consulta"
+IA: [pergunta plano ou particular e lista os planos aceitos]
+Lead: "sim, tenho plano"
+Esperado:
+  ✓ IA detecta afirmação contextual como convênio
+  ✓ mode muda para CONVENIO_AGENDAR
+  ✓ Pergunta qual plano para validar se está na lista
+  ✗ FALHA se tratar como particular após "sim"
+```
+
+---
+
+## BLOCO 5 — PROTOCOLO PACIENTE RECORRENTE
+
+**Cenário 16 — Paciente reconhecido: sem triagem**
+```
+[Criar paciente: Maria Santos, histórico com Dra. Ana]
+Lead: "oi, sou a Maria, quero remarcar minha consulta"
+Esperado:
+  ✓ IA reconhece Maria pelo número
+  ✓ mode = PACIENTE_AGENDAR
+  ✓ NÃO pergunta plano ou particular
+  ✓ NÃO aplica SPIN
+  ✓ Tom familiar: "Maria, que bom! Vamos remarcar..."
+  ✓ Já sabe que é com Dra. Ana
+  ✗ FALHA se fizer triagem de convênio
+```
+
+**Cenário 17 — Paciente cancela: tom correto e banco atualizado**
+```
+Paciente: "preciso cancelar minha consulta de amanhã"
+Esperado:
+  ✓ IA demonstra compreensão
+  ✓ Cancela no banco: status = "cancelled"
+  ✓ Oferece reagendar
+  ✗ FALHA se não cancelar no banco
+```
+
+**Cenário 18 — Paciente antigo tenta usar convênio agora**
+```
+[Criar paciente com paymentType = "private", histórico particular]
+Paciente: "uso Unimed agora, posso marcar pelo plano?"
+Esperado:
+  ✓ IA detecta mudança para convênio
+  ✓ Verifica se Unimed está nos planos aceitos
+  ✓ Direciona para Dr. Marcos
+  ✓ Atualiza paymentType no banco para "insurance"
+  ✗ FALHA se insistir em tratá-lo como particular
+```
+
+---
+
+## BLOCO 6 — REGRAS CRÍTICAS DE IA
+
+**Cenário 19 — IA não inventa horário fora da agenda**
+```
+[Criar agenda com apenas Dra. Ana disponível na quarta 10h]
+Lead: "quero na quinta às 15h com Dra. Ana"
+Esperado:
+  ✓ IA informa que Dra. Ana não atende quinta
+  ✓ Oferece próximo horário disponível REAL da agenda
+  ✗ FALHA se confirmar quinta (Dra. Ana não atende quinta)
+  ✗ FALHA se inventar horário não listado
+```
+
+**Cenário 20 — IA não inventa plano aceito**
+```
+Lead: "aceita meu plano Fusex?"
+Esperado:
+  ✓ Fusex NÃO está na lista do Dr. Marcos (Unimed, Amil, Bradesco Dental)
+  ✓ IA informa que Fusex não é aceito
+  ✓ Lista os planos aceitos
+  ✗ FALHA se confirmar Fusex como aceito
+  NOTA: Fusex está no INSURANCE_DECLARED_PATTERN global mas NÃO na lista
+  do Dr. Marcos — testar se a lista do profissional tem prioridade
+```
+
+**Cenário 21 — Modo convênio: sem termos de venda**
+```
+[Lead confirmado como Unimed]
+Lead: "quero marcar aparelho"
+Esperado:
+  ✓ IA NÃO usa: "última vaga", "agenda disputada", "corre que vai",
+    "consegui um encaixe especial", "garante agora", "não perca"
+  ✓ Tom neutro, informativo, calmo
+  ✗ FALHA se qualquer termo de escassez aparecer na resposta
+
+Verificar usando insurance-audit.ts findForbiddenTerms()
+```
+
+**Cenário 22 — Resposta afirmativa ambígua após agenda oferecida**
+```
+Lead: "pode ser na quarta às 10h"
+IA: [confirma agendamento e envia PIX da Dra. Ana]
+Lead: "ok"
+Esperado:
+  ✓ Agendamento já estava criado no passo anterior
+  ✓ IA confirma de forma natural ("perfeito, te espero!")
+  ✓ NÃO recria o agendamento (duplicata)
+  ✗ FALHA se criar agendamento duplicado
+```
+
+---
+
+## BLOCO 7 — QUOTA DE CONVERSAS
+
+**Cenário 23 — Quota esgotada: mensagem amigável**
+```
+[Forçar no banco: monthlyConversationsUsed = limite do plano, rechargeBalance = 0]
+Lead: "oi, quero marcar consulta"
+Esperado:
+  ✓ Lead recebe mensagem amigável (não silêncio)
+  ✓ IA NÃO processa com OpenAI
+  ✓ Conversa marcada como quota_blocked no banco
+  ✗ FALHA se IA responder normalmente (consumindo API)
+```
+
+**Cenário 24 — Recarga restaura atendimento**
+```
+[Continuar cenário 23]
+[addConversationRechargeCredits(tenantId, 400)]
+Lead: "oi de novo"
+Esperado:
+  ✓ IA volta a responder normalmente
+  ✓ quota_blocked revertido
+```
+
+---
+
+## Helpers de verificação
+
+```typescript
+// Verifica empatia antes de triagem
+function assertEmpathyBeforeTriage(response: string, context: string): void {
+  const empathyWords = [
+    "entendo", "imagino", "que situação", "que chato",
+    "sinto muito", "poxa", "caramba", "nossa",
+    "não se preocupe", "vamos cuidar", "fica tranquilo"
+  ];
+  const triageWords = [
+    "plano ou particular", "convênio ou particular",
+    "vai usar plano", "tem plano"
+  ];
+  const hasEmpathy = empathyWords.some(w => response.toLowerCase().includes(w));
+  const hasTriageInFirst = triageWords.some(w => response.toLowerCase().includes(w));
+  
+  // Empatia é obrigatória quando contexto tem dor/medo
+  // Triagem na PRIMEIRA resposta é proibida quando há dor/medo
+  if (!hasEmpathy) {
+    console.warn(`[${context}] AVISO: Sem empatia detectada`);
+  }
+  assert(!hasTriageInFirst,
+    `[${context}] FALHA: Perguntou plano/particular na primeira resposta sem acolher`
+  );
+}
+
+// Verifica que PIX correto foi enviado
+function assertPixKey(response: string, expectedKey: string, context: string): void {
+  assert(
+    response.includes(expectedKey),
+    `[${context}] FALHA: Chave PIX incorreta. Esperado: "${expectedKey}"`
+  );
+}
+
+// Verifica ausência de termos de venda em modo convênio
+function assertNoSalesTerms(response: string, context: string): void {
+  const forbidden = [
+    "última vaga", "ultima vaga", "agenda disputada",
+    "corre que", "garante agora", "não perca", "nao perca",
+    "consegui um encaixe", "encaixe especial", "aproveite",
+    "oportunidade", "vaga disputada"
+  ];
+  for (const term of forbidden) {
+    assert(
+      !response.toLowerCase().includes(term),
+      `[${context}] FALHA: Termo de venda proibido em modo convênio: "${term}"`
+    );
+  }
+}
+
+// Verifica que não há cobrança para convênio
+function assertNoChargeForInsurance(response: string, context: string): void {
+  const chargeTerms = ["R$150", "R$200", "R$300", "pix", "PIX", "pagar antes"];
+  for (const term of chargeTerms) {
+    assert(
+      !response.toLowerCase().includes(term.toLowerCase()),
+      `[${context}] FALHA: IA cobrou de paciente convênio: "${term}"`
+    );
+  }
+}
+```
+
+---
+
+## Formato do relatório
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║         OdontoFlow — Simulação E2E v4 — Diagnóstico Completo    ║
+╚══════════════════════════════════════════════════════════════════╝
+
+🏥 Clínica OdontoVida
+👩‍⚕️ Dra. Ana (R$150 + PIX obrigatório)
+🦷 Dr. Marcos (R$200 particular / convênio Seg+Qua)
+🔬 Dr. Roberto (Gratuita + PIX opcional)
+
+BLOCO 1 — Falsos Positivos de Convênio
+BLOCO 2 — Empatia e Primeiro Contato
+BLOCO 3 — Lead Particular + PIX
+BLOCO 4 — Protocolo Convênio
+BLOCO 5 — Paciente Recorrente
+BLOCO 6 — Regras Críticas
+BLOCO 7 — Quota
+
+Para cada cenário mostrar:
+  - Status: ✅ PASS / ❌ FAIL / ⚠️ PARCIAL
+  - Tempo de resposta
+  - RESPOSTA COMPLETA DA IA (obrigatório)
+  - mode_resolved (do log)
+  - Estado do banco após (quando relevante)
+  - Motivo da falha (quando falhar)
+
+════════════════════════════════════════════════════════════════════
+DIAGNÓSTICO FINAL
+
+Total: 24 | ✅ Pass: ? | ❌ Fail: ? | ⚠️ Parcial: ? | Taxa: ?%
+
+🔴 FALHAS CRÍTICAS:
+  [cenário + input + resposta real + esperado + causa provável]
+
+⚠️ COMPORTAMENTOS SUSPEITOS:
+  [cenários parciais ou com aviso]
+
+💡 RECOMENDAÇÕES:
+  [o que precisa corrigir]
+════════════════════════════════════════════════════════════════════
+```
+
+Salvar em `test-results/e2e-v4-diagnostico.json`
+
+---
+
+## Instruções para a Replit
+
+1. Seguir EXATAMENTE o padrão do `e2e-test.ts` existente
+
+2. Setup: criar tenant + 3 profissionais com TODOS os campos listados acima
+
+3. Para cenários de paciente (Bloco 5), criar paciente no banco antes
+
+4. **MAIS IMPORTANTE**: mostrar a RESPOSTA COMPLETA DA IA em cada cenário
+   nos logs e no relatório final — não apenas pass/fail
+
+5. Para cenários de modo (Bloco 1), capturar o `mode_resolved` dos logs
+   do servidor durante a execução — esse é o dado mais crítico
+
+6. Teardown apaga TUDO do tenant de teste
+
+7. Rodar testes unitários ANTES da simulação:
+   `pnpm --filter @workspace/api-server run test`
+
+8. Após criar o arquivo, rodar IMEDIATAMENTE e reportar o diagnóstico
+   com todas as respostas reais

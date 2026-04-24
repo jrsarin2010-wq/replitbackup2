@@ -3,20 +3,73 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: DentalAI SaaS API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: Storage
+    description: Object storage upload and serving endpoints.
+  - name: tenants
+    description: Tenant/clinic management
+  - name: patients
+    description: Patient management
+  - name: procedures
+    description: Dental procedures management
+  - name: appointments
+    description: Appointment management
+  - name: leads
+    description: Lead management
+  - name: conversations
+    description: WhatsApp conversation management
+  - name: messages
+    description: WhatsApp messages
+  - name: dashboard
+    description: Dashboard aggregated data
+  - name: reports
+    description: Reports and analytics
+  - name: settings
+    description: Clinic settings
+  - name: whatsapp
+    description: WhatsApp connection management
+  - name: audio
+    description: Audio transcription and TTS
+  - name: conversations-quota
+    description: Monthly AI conversation quota management and recharges
+  - name: webhook
+    description: Incoming webhooks
+  - name: treatments
+    description: Patient treatments and financial
+  - name: lgpd
+    description: LGPD privacy, consent, and audit management
+
 paths:
+  /storage/uploads/request-url:
+    post:
+      tags: [Storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestUploadUrlBody'
+      responses:
+        '200':
+          description: Presigned upload URL generated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestUploadUrlResponse'
+
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +77,1747 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ──────────────────────────── TENANTS ────────────────────────────
+  /dental/tenants:
+    get:
+      operationId: listTenants
+      tags: [tenants]
+      summary: List all tenants
+      responses:
+        "200":
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tenant"
+    post:
+      operationId: createTenant
+      tags: [tenants]
+      summary: Create a new tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTenantBody"
+      responses:
+        "201":
+          description: Created tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+
+  /dental/tenants/onboarding:
+    post:
+      operationId: onboardTenant
+      tags: [tenants]
+      summary: Onboard a new clinic (creates tenant + default settings + seed procedures)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardTenantBody"
+      responses:
+        "201":
+          description: Onboarded tenant with settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardTenantResponse"
+
+  /dental/tenants/{tenantId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantIdParam"
+    get:
+      operationId: getTenant
+      tags: [tenants]
+      summary: Get a tenant by ID
+      responses:
+        "200":
+          description: Tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+    patch:
+      operationId: updateTenant
+      tags: [tenants]
+      summary: Update a tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTenantBody"
+      responses:
+        "200":
+          description: Updated tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+    delete:
+      operationId: deleteTenant
+      tags: [tenants]
+      summary: Delete a tenant
+      responses:
+        "204":
+          description: Deleted
+
+  # ──────────────────────────── SUBSCRIPTION ────────────────────────────
+  /dental/subscription:
+    get:
+      operationId: getSubscription
+      tags: [subscription]
+      summary: Get subscription info including plan, dates, and credit balance
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Subscription info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionInfo"
+
+  /dental/subscription/cancel:
+    post:
+      operationId: cancelSubscription
+      tags: [subscription]
+      summary: Cancel the current subscription (valid until expiration date)
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Cancellation confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionInfo"
+
+  /dental/subscription/reactivate:
+    post:
+      operationId: reactivateSubscription
+      tags: [subscription]
+      summary: Reactivate a cancelled subscription
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Reactivation confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionInfo"
+
+  # ──────────────────────────── PATIENTS ────────────────────────────
+  /dental/patients:
+    get:
+      operationId: listPatients
+      tags: [patients]
+      summary: List patients for a tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [all, patients, leads]
+            default: patients
+      responses:
+        "200":
+          description: List of patients
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientsListResponse"
+    post:
+      operationId: createPatient
+      tags: [patients]
+      summary: Create a patient
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePatientBody"
+      responses:
+        "201":
+          description: Created patient
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Patient"
+
+  /dental/patients/{patientId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantHeader"
+      - name: patientId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getPatient
+      tags: [patients]
+      summary: Get patient details with appointment history
+      responses:
+        "200":
+          description: Patient with history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientDetail"
+    patch:
+      operationId: updatePatient
+      tags: [patients]
+      summary: Update a patient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePatientBody"
+      responses:
+        "200":
+          description: Updated patient
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Patient"
+    delete:
+      operationId: deletePatient
+      tags: [patients]
+      summary: Delete a patient
+      responses:
+        "204":
+          description: Deleted
+
+  # ──────────────────────────── PROCEDURES ────────────────────────────
+  /dental/procedures:
+    get:
+      operationId: listProcedures
+      tags: [procedures]
+      summary: List dental procedures
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: List of procedures
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DentalProcedure"
+    post:
+      operationId: createProcedure
+      tags: [procedures]
+      summary: Create a procedure
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProcedureBody"
+      responses:
+        "201":
+          description: Created procedure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalProcedure"
+
+  /dental/procedures/{procedureId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantHeader"
+      - name: procedureId
+        in: path
+        required: true
+        schema:
+          type: integer
+    patch:
+      operationId: updateProcedure
+      tags: [procedures]
+      summary: Update a procedure
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProcedureBody"
+      responses:
+        "200":
+          description: Updated procedure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalProcedure"
+    delete:
+      operationId: deleteProcedure
+      tags: [procedures]
+      summary: Delete a procedure
+      responses:
+        "204":
+          description: Deleted
+
+  # ──────────────────────────── APPOINTMENTS ────────────────────────────
+  /dental/appointments:
+    get:
+      operationId: listAppointments
+      tags: [appointments]
+      summary: List appointments
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: date
+          in: query
+          schema:
+            type: string
+            description: YYYY-MM-DD filter date
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: patientId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of appointments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppointmentWithPatient"
+    post:
+      operationId: createAppointment
+      tags: [appointments]
+      summary: Create an appointment
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAppointmentBody"
+      responses:
+        "201":
+          description: Created appointment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Appointment"
+        "409":
+          description: Conflict - time slot unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictError"
+
+  /dental/appointments/conflicts:
+    get:
+      operationId: checkAppointmentConflicts
+      tags: [appointments]
+      summary: Check for conflicts in a proposed time window
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: startsAt
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: endsAt
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: excludeAppointmentId
+          in: query
+          schema:
+            type: integer
+            description: Exclude this appointment ID when checking (for reschedules)
+      responses:
+        "200":
+          description: Conflict check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictCheckResponse"
+
+  /dental/appointments/availability:
+    get:
+      operationId: getAvailability
+      tags: [appointments]
+      summary: Get available time slots for a date
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            description: YYYY-MM-DD
+        - name: durationMinutes
+          in: query
+          schema:
+            type: integer
+            default: 60
+      responses:
+        "200":
+          description: Available time slots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityResponse"
+
+  /dental/appointments/{appointmentId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantHeader"
+      - name: appointmentId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getAppointment
+      tags: [appointments]
+      summary: Get an appointment
+      responses:
+        "200":
+          description: Appointment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentWithPatient"
+    patch:
+      operationId: updateAppointment
+      tags: [appointments]
+      summary: Update an appointment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAppointmentBody"
+      responses:
+        "200":
+          description: Updated appointment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Appointment"
+    delete:
+      operationId: deleteAppointment
+      tags: [appointments]
+      summary: Cancel/delete an appointment
+      responses:
+        "204":
+          description: Deleted
+
+  # ──────────────────────────── LEADS ────────────────────────────
+  /dental/leads:
+    get:
+      operationId: listLeads
+      tags: [leads]
+      summary: List leads
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: temperature
+          in: query
+          schema:
+            type: string
+            enum: [cold, warm, hot]
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of leads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DentalLead"
+    post:
+      operationId: createLead
+      tags: [leads]
+      summary: Create a lead
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeadBody"
+      responses:
+        "201":
+          description: Created lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalLead"
+
+  /dental/leads/{leadId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantHeader"
+      - name: leadId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getLead
+      tags: [leads]
+      summary: Get a lead
+      responses:
+        "200":
+          description: Lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalLead"
+    patch:
+      operationId: updateLead
+      tags: [leads]
+      summary: Update a lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLeadBody"
+      responses:
+        "200":
+          description: Updated lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalLead"
+    delete:
+      operationId: deleteLead
+      tags: [leads]
+      summary: Delete a lead
+      responses:
+        "204":
+          description: Deleted
+
+  /dental/leads/{leadId}/convert:
+    parameters:
+      - $ref: "#/components/parameters/TenantHeader"
+      - name: leadId
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: convertLead
+      tags: [leads]
+      summary: Convert lead to patient
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConvertLeadBody"
+      responses:
+        "200":
+          description: Converted patient
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Patient"
+
+  # ──────────────────────────── CONVERSATIONS ────────────────────────────
+  /dental/conversations:
+    get:
+      operationId: listConversations
+      tags: [conversations]
+      summary: List WhatsApp conversations
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: contactType
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DentalConversation"
+
+  /dental/conversations/{conversationId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantHeader"
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getConversation
+      tags: [conversations]
+      summary: Get a conversation with messages
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetail"
+
+  /dental/conversations/{conversationId}/messages:
+    parameters:
+      - $ref: "#/components/parameters/TenantHeader"
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: listMessages
+      tags: [messages]
+      summary: Get messages for a conversation
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Messages list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DentalMessage"
+    post:
+      operationId: sendMessage
+      tags: [messages]
+      summary: Send a message in a conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageBody"
+      responses:
+        "201":
+          description: Sent message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalMessage"
+
+  # ──────────────────────────── DASHBOARD ────────────────────────────
+  /dental/dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get dashboard KPI summary
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardData"
+
+  /dental/dashboard/activity:
+    get:
+      operationId: getDashboardActivity
+      tags: [dashboard]
+      summary: Get recent activity feed
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DentalActivity"
+
+  # ──────────────────────────── REPORTS ────────────────────────────
+  /dental/reports/appointments:
+    get:
+      operationId: getAppointmentsReport
+      tags: [reports]
+      summary: Appointments by period report
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+      responses:
+        "200":
+          description: Appointments report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentsReport"
+
+  /dental/reports/revenue:
+    get:
+      operationId: getRevenueReport
+      tags: [reports]
+      summary: Revenue report by period
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+      responses:
+        "200":
+          description: Revenue report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevenueReport"
+
+  /dental/reports/procedures:
+    get:
+      operationId: getProceduresReport
+      tags: [reports]
+      summary: Top procedures report
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Procedures report
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProcedureReportItem"
+
+  /dental/reports/peak-hours:
+    get:
+      operationId: getPeakHoursReport
+      tags: [reports]
+      summary: Peak hours report
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Peak hours data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PeakHourItem"
+
+  /dental/reports/leads:
+    get:
+      operationId: getLeadsReport
+      tags: [reports]
+      summary: Lead conversion report
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Leads conversion report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadsReport"
+
+  # ──────────────────────────── SETTINGS ────────────────────────────
+  /dental/settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get clinic settings
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalSettings"
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update clinic settings
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettingsBody"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalSettings"
+
+  # ──────────────────────────── PROFESSIONALS ────────────────────────────
+  /dental/professionals:
+    get:
+      operationId: listProfessionals
+      tags: [professionals]
+      summary: List dental professionals for the tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: includeInactive
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Professionals list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfessionalsListResponse"
+    post:
+      operationId: createProfessional
+      tags: [professionals]
+      summary: Create a new professional
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProfessionalBody"
+      responses:
+        "201":
+          description: Created professional
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalProfessional"
+
+  /dental/professionals/{professionalId}:
+    get:
+      operationId: getProfessional
+      tags: [professionals]
+      summary: Get a professional by ID
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: professionalId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Professional
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalProfessional"
+    patch:
+      operationId: updateProfessional
+      tags: [professionals]
+      summary: Update a professional
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: professionalId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfessionalBody"
+      responses:
+        "200":
+          description: Updated professional
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DentalProfessional"
+    delete:
+      operationId: deleteProfessional
+      tags: [professionals]
+      summary: Delete (deactivate) a professional
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: professionalId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+
+  # ──────────────────────────── WHATSAPP ────────────────────────────
+  /dental/whatsapp/connect:
+    get:
+      operationId: getWhatsappQrCode
+      tags: [whatsapp]
+      summary: Get WhatsApp QR code for tenant connection
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: QR code data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappQrResponse"
+
+  /dental/whatsapp/status:
+    get:
+      operationId: getWhatsappStatus
+      tags: [whatsapp]
+      summary: Get WhatsApp connection status
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappStatusResponse"
+
+  /dental/whatsapp/disconnect:
+    post:
+      operationId: disconnectWhatsapp
+      tags: [whatsapp]
+      summary: Disconnect WhatsApp for tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappStatusResponse"
+
+  /dental/whatsapp/recreate:
+    post:
+      operationId: recreateWhatsapp
+      tags: [whatsapp]
+      summary: Delete and recreate WhatsApp instance for tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Instance recreated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappRecreateResponse"
+
+  # ──────────────────────────── WEBHOOK ────────────────────────────
+  /dental/webhook/whatsapp:
+    post:
+      operationId: whatsappWebhook
+      tags: [webhook]
+      summary: Receive incoming WhatsApp messages from Evolution API
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsappWebhookPayload"
+      responses:
+        "200":
+          description: Processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  # ──────────────────────────── AUDIO ────────────────────────────
+  /dental/audio/transcribe:
+    post:
+      operationId: transcribeAudio
+      tags: [audio]
+      summary: Transcribe an audio file using OpenAI Whisper
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+                - file
+      responses:
+        "200":
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptionResponse"
+
+  /dental/audio/tts:
+    post:
+      operationId: textToSpeech
+      tags: [audio]
+      summary: Convert text to speech using Eleven Labs
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TtsBody"
+      responses:
+        "200":
+          description: Audio data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TtsResponse"
+
+  /dental/audio/voices:
+    get:
+      operationId: listVoices
+      tags: [audio]
+      summary: List available Brazilian Portuguese voices from ElevenLabs
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: List of voices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BrazilianVoice"
+
+  /dental/audio/preview:
+    post:
+      operationId: previewVoice
+      tags: [audio]
+      summary: Generate a free voice preview audio sample
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                voiceId:
+                  type: string
+                provider:
+                  type: string
+                  enum: [cartesia, elevenlabs]
+                phrase:
+                  type: string
+                  enum: [short, long]
+                  description: Choose the preview phrase. "short" is a greeting; "long" is a realistic schedule-offer sentence to evaluate breath/prosody.
+              required:
+                - voiceId
+      responses:
+        "200":
+          description: Audio preview as base64
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoicePreviewResponse"
+
+  /dental/audio/credits:
+    get:
+      operationId: getAudioCredits
+      tags: [audio]
+      summary: Get audio credit balance for a tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Credit balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudioCreditsResponse"
+
+  /dental/audio/credits/add:
+    post:
+      operationId: addAudioCredits
+      tags: [audio]
+      summary: Add audio credits to a tenant (admin)
+      parameters:
+        - name: x-admin-key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddCreditsBody"
+      responses:
+        "200":
+          description: Updated balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudioCreditsResponse"
+
+  /dental/audio/credits/transactions:
+    get:
+      operationId: getAudioTransactions
+      tags: [audio]
+      summary: Get credit transaction history for a tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreditTransaction"
+
+  /dental/audio/credits/all:
+    get:
+      operationId: getAllTenantsCredits
+      tags: [audio]
+      summary: Get credit balances for all tenants (admin)
+      parameters:
+        - name: x-admin-key
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: All tenant balances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TenantCreditSummary"
+
+  /dental/audio/credits/transactions/all:
+    get:
+      operationId: getAllTransactions
+      tags: [audio]
+      summary: Get all credit transactions across tenants (admin)
+      parameters:
+        - name: x-admin-key
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: All transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreditTransaction"
+
+  /dental/conversations-quota:
+    get:
+      operationId: getConversationQuota
+      tags: [conversations-quota]
+      summary: Get conversation quota status for a tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Conversation quota status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationQuotaResponse"
+
+  /dental/conversations-quota/recharge:
+    post:
+      operationId: purchaseConversationRecharge
+      tags: [conversations-quota]
+      summary: Purchase a conversation recharge package via PIX
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurchaseConversationRechargeBody"
+      responses:
+        "200":
+          description: Order created with PIX payment URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationRechargeOrderResponse"
+
+  /dental/treatments:
+    get:
+      operationId: listTreatments
+      tags: [treatments]
+      summary: List patient treatments
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: patientId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [all, in_progress, finished, cancelled]
+      responses:
+        "200":
+          description: List of treatments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PatientTreatment"
+    post:
+      operationId: createTreatment
+      tags: [treatments]
+      summary: Create a patient treatment record
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTreatmentBody"
+      responses:
+        "201":
+          description: Treatment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientTreatment"
+
+  /dental/treatments/financial-summary:
+    get:
+      operationId: getFinancialSummary
+      tags: [treatments]
+      summary: Get financial summary of all treatments
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Financial summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinancialSummary"
+
+  /dental/treatments/{treatmentId}:
+    get:
+      operationId: getTreatment
+      tags: [treatments]
+      summary: Get a single treatment
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: treatmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Treatment data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientTreatment"
+    put:
+      operationId: updateTreatment
+      tags: [treatments]
+      summary: Update a treatment
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: treatmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTreatmentBody"
+      responses:
+        "200":
+          description: Treatment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientTreatment"
+    delete:
+      operationId: deleteTreatment
+      tags: [treatments]
+      summary: Delete a treatment
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: treatmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Treatment deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  # ──────────────────────────── EXPENSES ────────────────────────────
+  /dental/expenses:
+    get:
+      operationId: listExpenses
+      tags: [expenses]
+      summary: List expenses with optional filters
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [aluguel, material, salario, fornecedor, manutencao, outros]
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: List of expenses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Expense"
+    post:
+      operationId: createExpense
+      tags: [expenses]
+      summary: Create an expense
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExpenseBody"
+      responses:
+        "201":
+          description: Expense created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+
+  /dental/expenses/{expenseId}:
+    get:
+      operationId: getExpense
+      tags: [expenses]
+      summary: Get a single expense
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: expenseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Expense data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+    put:
+      operationId: updateExpense
+      tags: [expenses]
+      summary: Update an expense
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: expenseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExpenseBody"
+      responses:
+        "200":
+          description: Expense updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+    delete:
+      operationId: deleteExpense
+      tags: [expenses]
+      summary: Delete an expense
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: expenseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Expense deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  # ──────────────────────────── LGPD ────────────────────────────
+  /dental/lgpd/consent:
+    get:
+      operationId: listConsents
+      tags: [lgpd]
+      summary: List consent records for the tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: entityType
+          in: query
+          schema:
+            type: string
+            enum: [patient, lead]
+        - name: entityId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of consent records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConsentRecord"
+    post:
+      operationId: createConsent
+      tags: [lgpd]
+      summary: Record a new consent
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConsentBody"
+      responses:
+        "201":
+          description: Consent recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRecord"
+
+  /dental/lgpd/audit-log:
+    get:
+      operationId: listAuditLog
+      tags: [lgpd]
+      summary: List audit log entries for the tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [create, read, update, delete, anonymize]
+        - name: entityType
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLogEntry"
+
+  /dental/lgpd/anonymize/{entityType}/{entityId}:
+    post:
+      operationId: anonymizeEntity
+      tags: [lgpd]
+      summary: Anonymize patient or lead data (right to be forgotten)
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: entityType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [patient, lead]
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Data anonymized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /dental/recovery/stats:
+    get:
+      operationId: getRecoveryStats
+      tags: [recovery]
+      summary: Get recovery campaign statistics
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["7d", "30d", "90d"]
+      responses:
+        "200":
+          description: Recovery stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryStats"
+
+  /dental/recovery/candidates:
+    get:
+      operationId: getRecoveryCandidates
+      tags: [recovery]
+      summary: List patients and leads eligible for recovery
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Recovery candidates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecoveryCandidate"
+
+  /dental/recovery/manual-send/{entityType}/{entityId}:
+    post:
+      operationId: manualRecoverySend
+      tags: [recovery]
+      summary: Manually trigger a recovery message for a patient or lead
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: entityType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [patient, lead]
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Recovery message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                required:
+                  - success
+
 components:
+  parameters:
+    TenantIdParam:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: integer
+
+    TenantHeader:
+      name: x-tenant-id
+      in: header
+      required: true
+      schema:
+        type: integer
+      description: Tenant (clinic) ID
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +1827,2322 @@ components:
       required:
         - status
 
+    # ─── LGPD ───
+    ConsentRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        entityType:
+          type: string
+        entityId:
+          type: integer
+        consentType:
+          type: string
+        termsVersion:
+          type: string
+        ipAddress:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        grantedAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - tenantId
+        - entityType
+        - entityId
+        - consentType
+        - termsVersion
+        - grantedAt
+
+    CreateConsentBody:
+      type: object
+      properties:
+        entityType:
+          type: string
+          enum: [patient, lead]
+        entityId:
+          type: integer
+        consentType:
+          type: string
+        termsVersion:
+          type: string
+          default: "1.0"
+      required:
+        - entityType
+        - entityId
+        - consentType
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: integer
+          nullable: true
+        field:
+          type: string
+          nullable: true
+        userId:
+          type: integer
+          nullable: true
+        ipAddress:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        metadata:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - action
+        - entityType
+        - createdAt
+
+    # ─── TENANT ───
+    OnboardTenantBody:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        plan:
+          type: string
+          default: free
+        clinicName:
+          type: string
+          nullable: true
+        clinicPhone:
+          type: string
+          nullable: true
+        workingHoursStart:
+          type: string
+          default: "08:00"
+        workingHoursEnd:
+          type: string
+          default: "18:00"
+      required:
+        - name
+        - slug
+
+    OnboardTenantResponse:
+      type: object
+      properties:
+        tenant:
+          $ref: "#/components/schemas/Tenant"
+        settings:
+          $ref: "#/components/schemas/DentalSettings"
+        procedures:
+          type: array
+          items:
+            $ref: "#/components/schemas/DentalProcedure"
+      required:
+        - tenant
+        - settings
+        - procedures
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        plan:
+          type: string
+        subscriptionStatus:
+          type: string
+        subscribedAt:
+          type: string
+          format: date-time
+          nullable: true
+        subscriptionExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+        whatsappProvider:
+          type: string
+        evolutionApiUrl:
+          type: string
+          nullable: true
+        evolutionApiKey:
+          type: string
+          nullable: true
+        evolutionInstanceName:
+          type: string
+          nullable: true
+        uazapiHost:
+          type: string
+          nullable: true
+        uazapiAdminToken:
+          type: string
+          nullable: true
+        uazapiInstanceToken:
+          type: string
+          nullable: true
+        uazapiInstanceId:
+          type: string
+          nullable: true
+        elevenLabsApiKey:
+          type: string
+          nullable: true
+        whatsappConnected:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - slug
+        - plan
+        - subscriptionStatus
+        - whatsappConnected
+        - createdAt
+        - updatedAt
+
+    SubscriptionInfo:
+      type: object
+      properties:
+        plan:
+          type: string
+        subscriptionStatus:
+          type: string
+        subscribedAt:
+          type: string
+          format: date-time
+          nullable: true
+        subscriptionExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+        creditBalance:
+          type: integer
+        clinicName:
+          type: string
+      required:
+        - plan
+        - subscriptionStatus
+        - creditBalance
+        - clinicName
+
+    CreateTenantBody:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        plan:
+          type: string
+          default: free
+      required:
+        - name
+        - slug
+
+    UpdateTenantBody:
+      type: object
+      properties:
+        name:
+          type: string
+        plan:
+          type: string
+        whatsappProvider:
+          type: string
+        evolutionApiUrl:
+          type: string
+          nullable: true
+        evolutionApiKey:
+          type: string
+          nullable: true
+        evolutionInstanceName:
+          type: string
+          nullable: true
+        uazapiHost:
+          type: string
+          nullable: true
+        uazapiAdminToken:
+          type: string
+          nullable: true
+        uazapiInstanceToken:
+          type: string
+          nullable: true
+        uazapiInstanceId:
+          type: string
+          nullable: true
+        elevenLabsApiKey:
+          type: string
+          nullable: true
+        openaiApiKey:
+          type: string
+          nullable: true
+
+    # ─── PATIENT ───
+    Patient:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          nullable: true
+        birthDate:
+          type: string
+          nullable: true
+        cpf:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        profilePicUrl:
+          type: string
+          nullable: true
+        firstVisit:
+          type: string
+          format: date-time
+          nullable: true
+        lastVisit:
+          type: string
+          format: date-time
+          nullable: true
+        totalSpent:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - name
+        - phone
+        - totalSpent
+        - createdAt
+        - updatedAt
+
+    PatientDetail:
+      allOf:
+        - $ref: "#/components/schemas/Patient"
+        - type: object
+          properties:
+            appointments:
+              type: array
+              items:
+                $ref: "#/components/schemas/Appointment"
+            conversations:
+              type: array
+              items:
+                $ref: "#/components/schemas/DentalConversation"
+
+    PatientsListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              phone:
+                type: string
+              email:
+                type: string
+                nullable: true
+              notes:
+                type: string
+                nullable: true
+              profilePicUrl:
+                type: string
+                nullable: true
+              totalSpent:
+                type: string
+              temperature:
+                type: string
+                nullable: true
+              interest:
+                type: string
+                nullable: true
+              source:
+                type: string
+                nullable: true
+              createdAt:
+                type: string
+                format: date-time
+                nullable: true
+              updatedAt:
+                type: string
+                format: date-time
+                nullable: true
+              type:
+                type: string
+                enum: [patient, lead]
+              leadId:
+                type: integer
+                nullable: true
+              cpf:
+                type: string
+                nullable: true
+              birthDate:
+                type: string
+                nullable: true
+              address:
+                type: string
+                nullable: true
+            required:
+              - id
+              - name
+              - phone
+              - type
+        total:
+          type: integer
+        totalPatients:
+          type: integer
+        totalLeads:
+          type: integer
+      required:
+        - data
+        - total
+        - totalPatients
+        - totalLeads
+
+    ConvertLeadBody:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          nullable: true
+        cpf:
+          type: string
+          nullable: true
+        birthDate:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    CreatePatientBody:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          nullable: true
+        birthDate:
+          type: string
+          nullable: true
+        cpf:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required:
+        - name
+        - phone
+
+    UpdatePatientBody:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          nullable: true
+        birthDate:
+          type: string
+          nullable: true
+        cpf:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    # ─── PROCEDURE ───
+    DentalProcedure:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price:
+          type: string
+        durationMinutes:
+          type: integer
+        active:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - name
+        - price
+        - durationMinutes
+        - active
+        - createdAt
+        - updatedAt
+
+    CreateProcedureBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price:
+          type: string
+        durationMinutes:
+          type: integer
+          default: 60
+      required:
+        - name
+        - price
+
+    UpdateProcedureBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price:
+          type: string
+        durationMinutes:
+          type: integer
+        active:
+          type: string
+
+    # ─── APPOINTMENT ───
+    Appointment:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        patientId:
+          type: integer
+          nullable: true
+        leadId:
+          type: integer
+          nullable: true
+        procedureId:
+          type: integer
+          nullable: true
+        procedureName:
+          type: string
+          nullable: true
+        status:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        price:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        confirmed:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - status
+        - startsAt
+        - endsAt
+        - confirmed
+        - createdAt
+        - updatedAt
+
+    AppointmentWithPatient:
+      allOf:
+        - $ref: "#/components/schemas/Appointment"
+        - type: object
+          properties:
+            patient:
+              $ref: "#/components/schemas/Patient"
+
+    CreateAppointmentBody:
+      type: object
+      properties:
+        patientId:
+          type: integer
+          nullable: true
+        leadId:
+          type: integer
+          nullable: true
+        procedureId:
+          type: integer
+          nullable: true
+        procedureName:
+          type: string
+          nullable: true
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        price:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required:
+        - startsAt
+        - endsAt
+
+    UpdateAppointmentBody:
+      type: object
+      properties:
+        patientId:
+          type: integer
+        status:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        price:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        confirmed:
+          type: string
+        procedureId:
+          type: integer
+          nullable: true
+        procedureName:
+          type: string
+          nullable: true
+
+    AvailabilityResponse:
+      type: object
+      properties:
+        date:
+          type: string
+        slots:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimeSlot"
+      required:
+        - date
+        - slots
+
+    TimeSlot:
+      type: object
+      properties:
+        start:
+          type: string
+        end:
+          type: string
+        available:
+          type: boolean
+      required:
+        - start
+        - end
+        - available
+
+    ConflictCheckResponse:
+      type: object
+      properties:
+        hasConflict:
+          type: boolean
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppointmentWithPatient"
+      required:
+        - hasConflict
+        - conflicts
+
+    ConflictError:
+      type: object
+      properties:
+        error:
+          type: string
+        conflictingAppointment:
+          $ref: "#/components/schemas/Appointment"
+      required:
+        - error
+
+    # ─── LEAD ───
+    DentalLead:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          nullable: true
+        temperature:
+          type: string
+          enum: [cold, warm, hot]
+        source:
+          type: string
+          nullable: true
+        interest:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        profilePicUrl:
+          type: string
+          nullable: true
+        status:
+          type: string
+        convertedToPatientId:
+          type: integer
+          nullable: true
+        convertedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastContactAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - name
+        - phone
+        - temperature
+        - status
+        - createdAt
+        - updatedAt
+
+    CreateLeadBody:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          nullable: true
+        temperature:
+          type: string
+          enum: [cold, warm, hot]
+          default: cold
+        source:
+          type: string
+          nullable: true
+        interest:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        professionalId:
+          type: integer
+          nullable: true
+      required:
+        - name
+        - phone
+
+    UpdateLeadBody:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          nullable: true
+        temperature:
+          type: string
+          enum: [cold, warm, hot]
+        status:
+          type: string
+        interest:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        professionalId:
+          type: integer
+          nullable: true
+
+    # ─── CONVERSATION ───
+    DentalConversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        contactPhone:
+          type: string
+        contactName:
+          type: string
+          nullable: true
+        contactProfilePicUrl:
+          type: string
+          nullable: true
+        contactType:
+          type: string
+        patientId:
+          type: integer
+          nullable: true
+        leadId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+        lastMessageAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastMessagePreview:
+          type: string
+          nullable: true
+        unreadCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - contactPhone
+        - contactType
+        - status
+        - unreadCount
+        - createdAt
+        - updatedAt
+
+    ConversationDetail:
+      allOf:
+        - $ref: "#/components/schemas/DentalConversation"
+        - type: object
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/DentalMessage"
+
+    DentalMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        conversationId:
+          type: integer
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        type:
+          type: string
+          enum: [text, audio, image, document]
+        content:
+          type: string
+          nullable: true
+        audioUrl:
+          type: string
+          nullable: true
+        audioTranscript:
+          type: string
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - conversationId
+        - direction
+        - type
+        - sentAt
+        - createdAt
+
+    SendMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+        type:
+          type: string
+          enum: [text, audio]
+          default: text
+      required:
+        - content
+
+    # ─── DASHBOARD ───
+    DashboardData:
+      type: object
+      properties:
+        appointmentsToday:
+          type: integer
+        appointmentsThisWeek:
+          type: integer
+        appointmentsPending:
+          type: integer
+        revenueThisMonth:
+          type: string
+        revenueThisWeek:
+          type: string
+        leadsTotal:
+          type: integer
+        leadsCold:
+          type: integer
+        leadsWarm:
+          type: integer
+        leadsHot:
+          type: integer
+        conversionRate:
+          type: number
+        patientsTotal:
+          type: integer
+        appointmentsToday_list:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppointmentWithPatient"
+      required:
+        - appointmentsToday
+        - appointmentsThisWeek
+        - appointmentsPending
+        - revenueThisMonth
+        - revenueThisWeek
+        - leadsTotal
+        - leadsCold
+        - leadsWarm
+        - leadsHot
+        - conversionRate
+        - patientsTotal
+        - appointmentsToday_list
+
+    DentalActivity:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        type:
+          type: string
+        description:
+          type: string
+        entityType:
+          type: string
+          nullable: true
+        entityId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - type
+        - description
+        - createdAt
+
+    # ─── REPORTS ───
+    AppointmentsReport:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              period:
+                type: string
+              count:
+                type: integer
+              completed:
+                type: integer
+              cancelled:
+                type: integer
+            required:
+              - period
+              - count
+              - completed
+              - cancelled
+        total:
+          type: integer
+        completed:
+          type: integer
+        cancelled:
+          type: integer
+      required:
+        - data
+        - total
+        - completed
+        - cancelled
+
+    RevenueReport:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              period:
+                type: string
+              revenue:
+                type: number
+            required:
+              - period
+              - revenue
+        totalRevenue:
+          type: number
+        averagePerAppointment:
+          type: number
+      required:
+        - data
+        - totalRevenue
+        - averagePerAppointment
+
+    ProcedureReportItem:
+      type: object
+      properties:
+        procedureName:
+          type: string
+        count:
+          type: integer
+        revenue:
+          type: number
+      required:
+        - procedureName
+        - count
+        - revenue
+
+    PeakHourItem:
+      type: object
+      properties:
+        hour:
+          type: integer
+        count:
+          type: integer
+      required:
+        - hour
+        - count
+
+    LeadsReport:
+      type: object
+      properties:
+        total:
+          type: integer
+        converted:
+          type: integer
+        conversionRate:
+          type: number
+        byTemperature:
+          type: object
+          properties:
+            cold:
+              type: integer
+            warm:
+              type: integer
+            hot:
+              type: integer
+          required:
+            - cold
+            - warm
+            - hot
+      required:
+        - total
+        - converted
+        - conversionRate
+        - byTemperature
+
+    # ─── PROFESSIONALS ───
+    DentalProfessional:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        specialty:
+          type: string
+          nullable: true
+        specialties:
+          type: string
+          nullable: true
+        cro:
+          type: string
+          nullable: true
+        isOwner:
+          type: boolean
+        isActive:
+          type: boolean
+        workingDays:
+          type: string
+        workingHoursStart:
+          type: string
+        workingHoursEnd:
+          type: string
+        lunchStart:
+          type: string
+          nullable: true
+        lunchEnd:
+          type: string
+          nullable: true
+        slotDurationMinutes:
+          type: integer
+        acceptsInsurance:
+          type: boolean
+        consultationFee:
+          type: string
+          nullable: true
+        chargesConsultation:
+          type: boolean
+        defaultLeadDurationMinutes:
+          type: integer
+          nullable: true
+        defaultPatientDurationMinutes:
+          type: integer
+          nullable: true
+        insurancePlans:
+          type: string
+          nullable: true
+        insuranceDays:
+          type: string
+          nullable: true
+        insuranceHoursStart:
+          type: string
+          nullable: true
+        insuranceHoursEnd:
+          type: string
+          nullable: true
+        instagramUrl:
+          type: string
+          nullable: true
+        profilePhotoUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - name
+        - isOwner
+        - isActive
+        - workingDays
+        - workingHoursStart
+        - workingHoursEnd
+        - slotDurationMinutes
+        - acceptsInsurance
+        - chargesConsultation
+        - createdAt
+        - updatedAt
+
+    ProfessionalsListResponse:
+      type: object
+      properties:
+        professionals:
+          type: array
+          items:
+            $ref: "#/components/schemas/DentalProfessional"
+        maxProfessionals:
+          type: integer
+      required:
+        - professionals
+        - maxProfessionals
+
+    CreateProfessionalBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        specialty:
+          type: string
+          nullable: true
+        specialties:
+          type: string
+          nullable: true
+        cro:
+          type: string
+          nullable: true
+        workingDays:
+          type: string
+        workingHoursStart:
+          type: string
+        workingHoursEnd:
+          type: string
+        lunchStart:
+          type: string
+        lunchEnd:
+          type: string
+        slotDurationMinutes:
+          type: integer
+          minimum: 5
+        acceptsInsurance:
+          type: boolean
+        consultationFee:
+          type: string
+          nullable: true
+        chargesConsultation:
+          type: boolean
+        defaultLeadDurationMinutes:
+          type: integer
+        defaultPatientDurationMinutes:
+          type: integer
+        insurancePlans:
+          type: string
+          nullable: true
+        insuranceDays:
+          type: string
+          nullable: true
+        insuranceHoursStart:
+          type: string
+          nullable: true
+        insuranceHoursEnd:
+          type: string
+          nullable: true
+        instagramUrl:
+          type: string
+          nullable: true
+        profilePhotoUrl:
+          type: string
+          nullable: true
+      required:
+        - name
+
+    UpdateProfessionalBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        specialty:
+          type: string
+          nullable: true
+        specialties:
+          type: string
+          nullable: true
+        cro:
+          type: string
+          nullable: true
+        workingDays:
+          type: string
+        workingHoursStart:
+          type: string
+        workingHoursEnd:
+          type: string
+        lunchStart:
+          type: string
+        lunchEnd:
+          type: string
+        slotDurationMinutes:
+          type: integer
+          minimum: 5
+        acceptsInsurance:
+          type: boolean
+        consultationFee:
+          type: string
+          nullable: true
+        chargesConsultation:
+          type: boolean
+        defaultLeadDurationMinutes:
+          type: integer
+        defaultPatientDurationMinutes:
+          type: integer
+        insurancePlans:
+          type: string
+          nullable: true
+        insuranceDays:
+          type: string
+          nullable: true
+        insuranceHoursStart:
+          type: string
+          nullable: true
+        insuranceHoursEnd:
+          type: string
+          nullable: true
+        instagramUrl:
+          type: string
+          nullable: true
+        profilePhotoUrl:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+
+    # ─── SETTINGS ───
+    DentalSettings:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        clinicName:
+          type: string
+          nullable: true
+        clinicPhone:
+          type: string
+          nullable: true
+        clinicAddress:
+          type: string
+          nullable: true
+        professionalName:
+          type: string
+          nullable: true
+        professionalGender:
+          type: string
+          nullable: true
+          enum: ['male', 'female', 'other', null]
+          description: "Dr. (male), Dra. (female), Dr(a). (other)"
+        specialties:
+          type: string
+          nullable: true
+        professionalCro:
+          type: string
+          nullable: true
+        professionalSpecialties:
+          type: string
+          nullable: true
+        workingHoursStart:
+          type: string
+        workingHoursEnd:
+          type: string
+        workingDays:
+          type: string
+        slotDurationMinutes:
+          type: integer
+        defaultLeadDurationMinutes:
+          type: integer
+        defaultPatientDurationMinutes:
+          type: integer
+        chargesConsultation:
+          type: boolean
+        consultationFee:
+          type: string
+        autoConfirmAppointments:
+          type: boolean
+        confirmDaysBefore:
+          type: integer
+        acceptsInsurance:
+          type: boolean
+        insurancePlans:
+          type: string
+          nullable: true
+        insuranceDays:
+          type: string
+          nullable: true
+        insuranceHoursStart:
+          type: string
+          nullable: true
+        insuranceHoursEnd:
+          type: string
+          nullable: true
+        lunchStart:
+          type: string
+          maxLength: 5
+        lunchEnd:
+          type: string
+          maxLength: 5
+        scheduleConfig:
+          type: string
+          nullable: true
+        aiName:
+          type: string
+          maxLength: 100
+        aiPersonality:
+          type: string
+          nullable: true
+        personalityType:
+          type: string
+          nullable: true
+        aiLanguage:
+          type: string
+        reminderHoursBefore:
+          type: integer
+        remarketingEnabled:
+          type: boolean
+        remarketingHours:
+          type: string
+        remarketingDays:
+          type: string
+        remarketingMaxLeads:
+          type: integer
+        remarketingIntervalHot:
+          type: integer
+        remarketingIntervalWarm:
+          type: integer
+        remarketingIntervalCold:
+          type: integer
+        followUpReminder:
+          type: boolean
+        followUpConfirmation:
+          type: boolean
+        followUpPostAppointment:
+          type: boolean
+        postAppointmentHoursAfter:
+          type: integer
+        noShowEnabled:
+          type: boolean
+        noShowPatientContactHoursAfter:
+          type: integer
+        noShowPatientMessage:
+          type: string
+          nullable: true
+        birthdayEnabled:
+          type: boolean
+        birthdayHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        birthdayMessage:
+          type: string
+          nullable: true
+        audioMode:
+          type: string
+          enum: [off, always, audio_reply_only]
+        elevenLabsVoiceId:
+          type: string
+          nullable: true
+        telegramBotToken:
+          type: string
+          nullable: true
+        telegramChatId:
+          type: string
+          nullable: true
+        telegramEscalationEnabled:
+          type: boolean
+        acceptsInstallments:
+          type: boolean
+          nullable: true
+        maxInstallments:
+          type: integer
+          nullable: true
+        acceptsBoleto:
+          type: boolean
+          nullable: true
+        paymentNotes:
+          type: string
+          nullable: true
+        recoveryEnabled:
+          type: boolean
+        recoveryInactivityDays:
+          type: integer
+        recoveryNoShowDays:
+          type: integer
+        recoveryAiInstructions:
+          type: string
+          nullable: true
+        recoveryHours:
+          type: string
+        recoveryDays:
+          type: string
+        recoveryMaxPerRun:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - workingHoursStart
+        - workingHoursEnd
+        - workingDays
+        - slotDurationMinutes
+        - defaultLeadDurationMinutes
+        - defaultPatientDurationMinutes
+        - chargesConsultation
+        - consultationFee
+        - autoConfirmAppointments
+        - confirmDaysBefore
+        - acceptsInsurance
+        - aiLanguage
+        - reminderHoursBefore
+        - audioMode
+        - createdAt
+        - updatedAt
+
+    UpdateSettingsBody:
+      type: object
+      properties:
+        unconfirmedAlertEnabled:
+          type: boolean
+          description: "Task #15 — liga/desliga o alerta diário de agendamentos não confirmados."
+        unconfirmedAlertHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: "Task #15 — hora local do tenant em que o alerta diário deve disparar."
+        tenantTzOffsetHours:
+          type: integer
+          minimum: -12
+          maximum: 14
+          description: "Task #15 — offset UTC do fuso horário do tenant (ex.: -3 para BRT)."
+        clinicName:
+          type: string
+          nullable: true
+        clinicPhone:
+          type: string
+          nullable: true
+        clinicAddress:
+          type: string
+          nullable: true
+        professionalName:
+          type: string
+          nullable: true
+        professionalGender:
+          type: string
+          nullable: true
+          enum: ['male', 'female', 'other', null]
+          description: "Dr. (male), Dra. (female), Dr(a). (other)"
+        specialties:
+          type: string
+          nullable: true
+        professionalCro:
+          type: string
+          nullable: true
+        professionalSpecialties:
+          type: string
+          nullable: true
+        workingHoursStart:
+          type: string
+        workingHoursEnd:
+          type: string
+        workingDays:
+          type: string
+        slotDurationMinutes:
+          type: integer
+        defaultLeadDurationMinutes:
+          type: integer
+        defaultPatientDurationMinutes:
+          type: integer
+        chargesConsultation:
+          type: boolean
+        consultationFee:
+          type: string
+        autoConfirmAppointments:
+          type: boolean
+        confirmDaysBefore:
+          type: integer
+        acceptsInsurance:
+          type: boolean
+        insurancePlans:
+          type: string
+          nullable: true
+        insuranceDays:
+          type: string
+          nullable: true
+        insuranceHoursStart:
+          type: string
+          nullable: true
+        insuranceHoursEnd:
+          type: string
+          nullable: true
+        lunchStart:
+          type: string
+          maxLength: 5
+        lunchEnd:
+          type: string
+          maxLength: 5
+        scheduleConfig:
+          type: string
+          nullable: true
+        aiName:
+          type: string
+          maxLength: 100
+        aiPersonality:
+          type: string
+          nullable: true
+        personalityType:
+          type: string
+          nullable: true
+        aiLanguage:
+          type: string
+        reminderHoursBefore:
+          type: integer
+        remarketingEnabled:
+          type: boolean
+        remarketingHours:
+          type: string
+        remarketingDays:
+          type: string
+        remarketingMaxLeads:
+          type: integer
+        remarketingIntervalHot:
+          type: integer
+        remarketingIntervalWarm:
+          type: integer
+        remarketingIntervalCold:
+          type: integer
+        followUpReminder:
+          type: boolean
+        followUpConfirmation:
+          type: boolean
+        followUpPostAppointment:
+          type: boolean
+        postAppointmentHoursAfter:
+          type: integer
+        noShowEnabled:
+          type: boolean
+        noShowPatientContactHoursAfter:
+          type: integer
+        noShowPatientMessage:
+          type: string
+          nullable: true
+        birthdayEnabled:
+          type: boolean
+        birthdayHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        birthdayMessage:
+          type: string
+          nullable: true
+        audioMode:
+          type: string
+          enum: [off, always, audio_reply_only]
+        elevenLabsVoiceId:
+          type: string
+          nullable: true
+        humanTakeoverMinutes:
+          type: integer
+          minimum: 1
+          maximum: 30
+        telegramBotToken:
+          type: string
+          nullable: true
+        telegramChatId:
+          type: string
+          nullable: true
+          maxLength: 100
+        telegramEscalationEnabled:
+          type: boolean
+        acceptsInstallments:
+          type: boolean
+          nullable: true
+        maxInstallments:
+          type: integer
+          nullable: true
+        acceptsBoleto:
+          type: boolean
+          nullable: true
+        paymentNotes:
+          type: string
+          nullable: true
+        recoveryEnabled:
+          type: boolean
+        recoveryInactivityDays:
+          type: integer
+        recoveryNoShowDays:
+          type: integer
+        recoveryAiInstructions:
+          type: string
+          nullable: true
+        recoveryHours:
+          type: string
+        recoveryDays:
+          type: string
+        recoveryMaxPerRun:
+          type: integer
+
+    # ─── WHATSAPP ───
+    WhatsappQrResponse:
+      type: object
+      properties:
+        qrCode:
+          type: string
+          description: Base64 encoded QR code image or QR string
+        status:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - qrCode
+        - status
+
+    WhatsappStatusResponse:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        status:
+          type: string
+          enum: [connected, disconnected, qr_pending, connecting]
+        phone:
+          type: string
+          nullable: true
+        connectedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - connected
+        - status
+
+    WhatsappRecreateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        instanceName:
+          type: string
+        qrCode:
+          type: string
+          nullable: true
+      required:
+        - success
+        - instanceName
+
+    # ─── WEBHOOK ───
+    WhatsappWebhookPayload:
+      type: object
+      properties:
+        event:
+          type: string
+        instance:
+          type: string
+        data:
+          type: object
+      required:
+        - event
+        - instance
+        - data
+
+    # ─── AUDIO ───
+    TranscriptionResponse:
+      type: object
+      properties:
+        transcript:
+          type: string
+        language:
+          type: string
+          nullable: true
+        duration:
+          type: number
+          nullable: true
+      required:
+        - transcript
+
+    TtsBody:
+      type: object
+      properties:
+        text:
+          type: string
+        voiceId:
+          type: string
+          nullable: true
+      required:
+        - text
+
+    TtsResponse:
+      type: object
+      properties:
+        audioBase64:
+          type: string
+        mimeType:
+          type: string
+      required:
+        - audioBase64
+        - mimeType
+
+    BrazilianVoice:
+      type: object
+      properties:
+        voiceId:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        accent:
+          type: string
+        gender:
+          type: string
+        previewUrl:
+          type: string
+      required:
+        - voiceId
+        - name
+        - category
+        - accent
+        - gender
+        - previewUrl
+
+    VoicePreviewResponse:
+      type: object
+      properties:
+        audioBase64:
+          type: string
+        mimeType:
+          type: string
+      required:
+        - audioBase64
+        - mimeType
+
+    AudioCreditsResponse:
+      type: object
+      properties:
+        tenantId:
+          type: integer
+        balance:
+          type: integer
+      required:
+        - tenantId
+        - balance
+
+    ConversationQuotaResponse:
+      type: object
+      properties:
+        tenantId:
+          type: integer
+        monthlyConversationsUsed:
+          type: integer
+        monthlyLimit:
+          type: integer
+        monthlyRemaining:
+          type: integer
+        rechargeBalance:
+          type: integer
+        totalAvailable:
+          type: integer
+        percentUsed:
+          type: integer
+        nextResetDate:
+          type: string
+          format: date-time
+        isExhausted:
+          type: boolean
+      required:
+        - tenantId
+        - monthlyConversationsUsed
+        - monthlyLimit
+        - monthlyRemaining
+        - rechargeBalance
+        - totalAvailable
+        - percentUsed
+        - isExhausted
+
+    PurchaseConversationRechargeBody:
+      type: object
+      properties:
+        taxId:
+          type: string
+          minLength: 1
+      required:
+        - taxId
+
+    ConversationRechargeOrderResponse:
+      type: object
+      properties:
+        orderId:
+          type: integer
+        paymentUrl:
+          type: string
+        package:
+          type: object
+      required:
+        - orderId
+        - paymentUrl
+
+    AddCreditsBody:
+      type: object
+      properties:
+        tenantId:
+          type: integer
+        amount:
+          type: integer
+        description:
+          type: string
+      required:
+        - tenantId
+        - amount
+        - description
+
+    CreditTransaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        amount:
+          type: integer
+        type:
+          type: string
+          enum: [add, deduct]
+        description:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - amount
+        - type
+        - createdAt
+
+    TenantCreditSummary:
+      type: object
+      properties:
+        tenantId:
+          type: integer
+        tenantName:
+          type: string
+        balance:
+          type: integer
+      required:
+        - tenantId
+        - tenantName
+        - balance
+
+    TreatmentProcedureItem:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+      required:
+        - name
+        - value
+
+    PatientTreatment:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        patientId:
+          type: integer
+        patientName:
+          type: string
+        patientPhone:
+          type: string
+        description:
+          type: string
+        procedures:
+          type: string
+        totalValue:
+          type: string
+        paidValue:
+          type: string
+        paymentMethod:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [in_progress, finished, cancelled]
+        notes:
+          type: string
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - patientId
+        - description
+        - totalValue
+        - paidValue
+        - status
+        - createdAt
+        - updatedAt
+
+    CreateTreatmentBody:
+      type: object
+      properties:
+        patientId:
+          type: integer
+        description:
+          type: string
+        procedures:
+          type: array
+          items:
+            $ref: '#/components/schemas/TreatmentProcedureItem'
+        totalValue:
+          type: number
+        paidValue:
+          type: number
+        paymentMethod:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [in_progress, finished, cancelled]
+      required:
+        - patientId
+        - description
+        - totalValue
+
+    UpdateTreatmentBody:
+      type: object
+      properties:
+        description:
+          type: string
+        procedures:
+          type: array
+          items:
+            $ref: '#/components/schemas/TreatmentProcedureItem'
+        totalValue:
+          type: number
+        paidValue:
+          type: number
+        paymentMethod:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [in_progress, finished, cancelled]
+
+    FinancialSummary:
+      type: object
+      properties:
+        totalRevenue:
+          type: number
+        totalPaid:
+          type: number
+        totalPending:
+          type: number
+        totalExpenses:
+          type: number
+        netBalance:
+          type: number
+        totalTreatments:
+          type: integer
+        finalized:
+          type: integer
+        inProgress:
+          type: integer
+      required:
+        - totalRevenue
+        - totalPaid
+        - totalPending
+        - totalExpenses
+        - netBalance
+        - totalTreatments
+        - finalized
+        - inProgress
+
+    Expense:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        description:
+          type: string
+        amount:
+          type: string
+        category:
+          type: string
+          enum: [aluguel, material, salario, fornecedor, manutencao, outros]
+        date:
+          type: string
+          format: date-time
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - description
+        - amount
+        - category
+        - date
+        - createdAt
+        - updatedAt
+
+    CreateExpenseBody:
+      type: object
+      properties:
+        description:
+          type: string
+        amount:
+          type: number
+        category:
+          type: string
+          enum: [aluguel, material, salario, fornecedor, manutencao, outros]
+        date:
+          type: string
+          format: date
+        notes:
+          type: string
+          nullable: true
+      required:
+        - description
+        - amount
+        - category
+
+    UpdateExpenseBody:
+      type: object
+      properties:
+        description:
+          type: string
+        amount:
+          type: number
+        category:
+          type: string
+          enum: [aluguel, material, salario, fornecedor, manutencao, outros]
+        date:
+          type: string
+          format: date
+        notes:
+          type: string
+          nullable: true
+
+    RecoveryStats:
+      type: object
+      properties:
+        totalCandidates:
+          type: integer
+        totalSent:
+          type: integer
+        totalResponded:
+          type: integer
+        totalConverted:
+          type: integer
+        weeklyTrend:
+          type: array
+          items:
+            type: object
+            properties:
+              week:
+                type: string
+              sent:
+                type: integer
+              responded:
+                type: integer
+              converted:
+                type: integer
+            required:
+              - week
+              - sent
+              - responded
+              - converted
+        inactivityBuckets:
+          type: object
+          properties:
+            30-60d:
+              type: integer
+            60-90d:
+              type: integer
+            +90d:
+              type: integer
+      required:
+        - totalCandidates
+        - totalSent
+        - totalResponded
+        - totalConverted
+        - weeklyTrend
+        - inactivityBuckets
+
+    RecoveryCandidate:
+      type: object
+      properties:
+        id:
+          type: integer
+        entityType:
+          type: string
+          enum: [patient, lead]
+        name:
+          type: string
+        phone:
+          type: string
+        lastContact:
+          type: string
+          nullable: true
+        daysInactive:
+          type: integer
+        status:
+          type: string
+          enum: [pendente, mensagem_enviada, respondeu, reagendou]
+        lastRecoveryAt:
+          type: string
+          nullable: true
+      required:
+        - id
+        - entityType
+        - name
+        - phone
+        - daysInactive
+        - status
+
+    RequestUploadUrlBody:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+
+    RequestUploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        metadata:
+          type: object
+          nullable: true

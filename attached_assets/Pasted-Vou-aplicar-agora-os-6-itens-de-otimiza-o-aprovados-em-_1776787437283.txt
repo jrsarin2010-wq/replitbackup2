@@ -1,0 +1,41 @@
+Vou aplicar agora os 6 itens de otimização aprovados em paralelo. Item 7 (dedup PIX) já é eficiente — só uma chamada de visão por imagem (PIX ou genérica, nunca as duas) — então não há gasto duplicado para cortar.
+
+
+12 actions
+Agora restart e tests para validar.
+
+
+7 actions
+Os 3 tests que falharam codificavam o comportamento antigo (sempre retry). Vou atualizá-los para refletir a nova regra: violações cosméticas só logam, sem retry.
+
+
+4 actions
+1030/1030 passes. Vou commitar.
+
+
+Responding directly to user
+Pronto. Apliquei todos os 6 itens aprovados de redução de custo:
+
+O que mudou:
+
+Histórico mais enxuto — A IA agora carrega só as 12 mensagens mais recentes (em vez de 20). Quando a conversa passa de 10 mensagens, o resumo automático já cobre o passado, então não há perda de contexto.
+
+Limites de tokens reduzidos — Extração de agendamento (150→80), remarketing (256→150) e geração de resumo (300→200). Tudo dentro do que cada chamada realmente precisa.
+
+Resumo gerado com menos frequência — A cada 8 mensagens novas em vez de 5.
+
+Sem retry para deslizes cosméticos — Quando a IA comete só erros estéticos (título "Dr." em vez de "Dra.", uso de termos de plano de saúde, ou mencionar "consulta grátis" quando há cobrança), a resposta original passa, é só logada. Antes, cada deslize cosmético gastava uma 2ª chamada ao modelo. O retry continua para erros sérios (preço inventado, horário fora da agenda, procedimento inexistente).
+
+Filtro de profissionais por convênio — Já estava ativo no código, sem mudanças.
+
+Análise de imagem PIX — Verifiquei e o código já chama o modelo de visão uma única vez por imagem (PIX ou genérica, nunca as duas). Não havia gasto duplicado para cortar.
+
+Validação: todos os 1030 testes continuam passando. 3 testes que travavam o comportamento antigo de retry foram atualizados para refletir a nova regra.
+
+Economia esperada: 35-50% no custo OpenAI, sem perda perceptível de qualidade nas respostas ao paciente.
+
+
+Checkpoint made
+51 minutes ago
+
+Worked for 5 minutes

@@ -1,0 +1,43 @@
+"No prompt-builder.ts, preciso corrigir as regras de preço da IA. A IA deve seguir UMA única regra: falar APENAS o valor da consulta de cada dentista — nunca preços de procedimentos.
+Fazer 3 ajustes:
+1. Na linha 216, remover completamente procedureAvgPrices do prompt — procedimentos não devem ter preço na IA:
+typescript// REMOVER essa linha completamente:
+const procedureAvgPrices = procedures.map((p) => `- ${p.name}: ~R$${p.price}`).join("\n");
+
+// E remover sua referência na linha 818:
+// ${procedureAvgPrices ? `- Procedimentos: ${procedureAvgPrices}` : ""}
+2. Na seção === PRECOS E PAGAMENTO ===, quando há múltiplos profissionais, montar a info de consulta por dentista separadamente. Substituir o bloco de consultationInfo atual por:
+typescript// Para múltiplos profissionais — montar por dentista
+const consultationInfoByProfessional = activeProfessionals.map((p) => {
+  const name = p.name;
+  const gratis = p.chargesConsultation === false;
+  const fee = p.consultationFee || settings?.consultationFee || "150.00";
+  const pixObrigatorio = p.pixEnabled && p.pixMode === "required";
+  const pixOpcional = p.pixEnabled && p.pixMode === "optional";
+
+  const feeStr = gratis
+    ? "consulta GRATUITA"
+    : `consulta R$${fee}`;
+
+  const pixStr = pixObrigatorio
+    ? " — pagamento antecipado via PIX OBRIGATÓRIO antes da consulta"
+    : pixOpcional
+    ? " — aceita PIX antecipado (opcional)"
+    : "";
+
+  return `- ${name}: ${feeStr}${pixStr}`;
+}).join("\n");
+3. Substituir a instrução de preços (linha 820–822) por uma regra única clara:
+REGRA ÚNICA DE PREÇOS:
+A IA deve informar APENAS o valor da consulta de cada dentista conforme abaixo:
+${consultationInfoByProfessional}
+
+PROIBIDO ABSOLUTO: nunca mencione preço de procedimentos (clareamento, implante,
+aparelho, limpeza, etc). Se perguntarem o preço de qualquer procedimento, responder:
+"Para valores de procedimentos específicos, nossa equipe informa após a avaliação
+presencial — o que posso confirmar agora é o valor da consulta."
+
+PAGAMENTO ANTECIPADO: Se o dentista exige PIX antes da consulta, informar
+PROATIVAMENTE ao oferecer o agendamento: "A consulta custa R$X e o pagamento
+é feito com antecedência via PIX antes do atendimento."
+Após os ajustes, rodar os testes unitários para confirmar que nada quebrou."

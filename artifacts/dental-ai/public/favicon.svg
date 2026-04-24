@@ -1,0 +1,27 @@
+<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="180" height="180" rx="36" fill="#1e3a5f"/>
+  <rect x="8" y="8" width="164" height="164" rx="30" fill="url(#grad)"/>
+  <line x1="90" y1="20" x2="90" y2="160" stroke="#1e3a5f" stroke-width="2.5"/>
+  <line x1="20" y1="90" x2="160" y2="90" stroke="#1e3a5f" stroke-width="2.5"/>
+  <circle cx="52" cy="52" r="14" fill="none" stroke="#d0dce8" stroke-width="4"/>
+  <circle cx="52" cy="52" r="14" fill="none" stroke="#c0d0e0" stroke-width="3"/>
+  <path d="M38 58 Q38 66 46 66 H50" fill="none" stroke="#c0d0e0" stroke-width="3"/>
+  <circle cx="44" cy="52" r="2" fill="#c0d0e0"/>
+  <circle cx="52" cy="52" r="2" fill="#c0d0e0"/>
+  <circle cx="60" cy="52" r="2" fill="#c0d0e0"/>
+  <rect x="112" y="38" width="36" height="30" rx="4" fill="none" stroke="#c0d0e0" stroke-width="3"/>
+  <line x1="115" y1="48" x2="145" y2="48" stroke="#c0d0e0" stroke-width="2"/>
+  <line x1="122" y1="34" x2="122" y2="40" stroke="#c0d0e0" stroke-width="3" stroke-linecap="round"/>
+  <line x1="138" y1="34" x2="138" y2="40" stroke="#c0d0e0" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="52" cy="118" r="10" fill="none" stroke="#c0d0e0" stroke-width="3"/>
+  <path d="M38 142 Q38 130 52 128 Q66 130 66 142" fill="none" stroke="#c0d0e0" stroke-width="3"/>
+  <path d="M130 110 L134 118 L130 126" fill="none" stroke="#40c4aa" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M122 114 L126 106 L130 114" fill="none" stroke="#40c4aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M136 120 L140 112 L144 120" fill="none" stroke="#40c4aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4a7ca8"/>
+      <stop offset="100%" stop-color="#2a4a6a"/>
+    </linearGradient>
+  </defs>
+</svg>

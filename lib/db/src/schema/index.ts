@@ -1,20 +1,36 @@
-// Export your models here. Add one export per file
-// export * from "./posts";
-//
-// Each model/table should ideally be split into different files.
-// Each model/table should define a Drizzle table, insert schema, and types:
-//
-//   import { pgTable, text, serial } from "drizzle-orm/pg-core";
-//   import { createInsertSchema } from "drizzle-zod";
-//   import { z } from "zod/v4";
-//
-//   export const postsTable = pgTable("posts", {
-//     id: serial("id").primaryKey(),
-//     title: text("title").notNull(),
-//   });
-//
-//   export const insertPostSchema = createInsertSchema(postsTable).omit({ id: true });
-//   export type InsertPost = z.infer<typeof insertPostSchema>;
-//   export type Post = typeof postsTable.$inferSelect;
-
-export {}
+export * from "./tenants";
+export * from "./patients";
+export * from "./dental_procedures";
+export * from "./appointments";
+export * from "./appointment_follow_ups";
+export * from "./dental_leads";
+export * from "./dental_conversations";
+export * from "./dental_messages";
+export * from "./dental_settings";
+export * from "./dental_activity";
+export * from "./audio_messages";
+export * from "./patient_treatments";
+export * from "./expenses";
+export * from "./audio_credits";
+export * from "./ai_contact_memory";
+export * from "./ai_objection_patterns";
+export * from "./ai_knowledge_base";
+export * from "./ai_strategy_analytics";
+export * from "./dental_professionals";
+export * from "./dental_blocked_periods";
+export * from "./tutor_feedback";
+export * from "./tutor_chat_sessions";
+export * from "./consent_records";
+export * from "./data_audit_log";
+export * from "./dental_waitlist";
+export * from "./call_logs";
+export * from "./leads";
+export * from "./dental_portfolio_items";
+export * from "./conversation_quotas";
+export * from "./tos_versions";
+export * from "./tos_acceptances";
+export * from "./ai_response_audit";
+export * from "./ai_learning_conversation_seen";
+export * from "./refund_requests";
+export * from "./plan_change_orders";
+export * from "./platform_alerts";

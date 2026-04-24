@@ -6,11 +6,37 @@
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "db:push": "pnpm --filter @workspace/db run push",
+    "db:push:force": "pnpm --filter @workspace/db run push-force",
+    "db:migrate": "pnpm --filter @workspace/db run migrate",
+    "db:generate": "pnpm --filter @workspace/db run generate",
+    "db:stamp": "pnpm --filter @workspace/scripts run db-stamp",
+    "db:migrate-data": "pnpm --filter @workspace/scripts run migrate-data"
   },
   "private": true,
   "devDependencies": {
-    "typescript": "~5.9.2",
-    "prettier": "^3.8.1"
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.2"
+  },
+  "dependencies": {
+    "@replit/connectors-sdk": "^0.4.0",
+    "puppeteer": "^24.40.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "puppeteer"
+    ],
+    "overrides": {
+      "path-to-regexp": ">=8.4.0",
+      "lodash": ">=4.18.0",
+      "minimatch>brace-expansion": ">=2.0.3",
+      "micromatch>picomatch": "^2.3.2",
+      "vite>picomatch": "4.0.4",
+      "vite>yaml": "2.8.3",
+      "@scalar/json-magic>yaml": "2.8.3",
+      "@scalar/openapi-parser>yaml": "2.8.3",
+      "typedoc>yaml": "2.8.3"
+    }
   }
 }

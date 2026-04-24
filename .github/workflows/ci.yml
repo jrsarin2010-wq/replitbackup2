@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & Typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build API Server
+        run: pnpm --filter @workspace/api-server run build
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/odontoflow
+          JWT_SECRET: ci-secret-not-used-at-build-time
+          DATA_ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+          ADMIN_API_KEY: ci-admin-key
+          AI_INTEGRATIONS_OPENAI_API_KEY: sk-ci-placeholder
+          AI_INTEGRATIONS_OPENAI_BASE_URL: https://api.openai.com/v1

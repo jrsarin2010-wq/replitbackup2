@@ -1,0 +1,560 @@
+# Prompt — Simulação E2E Clínica Multi-Especialidade (v3)
+## Foco: Empatia, Protocolo de Atendimento e PIX por Profissional
+
+## Objetivo real desta simulação
+Verificar se a IA:
+1. Tem EMPATIA e tom adequado no início de cada conversa
+2. Aplica PROTOCOLO DIFERENTE para lead particular x convênio x paciente da clínica
+3. Envia a CHAVE PIX correta do dentista certo após agendamento (quando pixMode=required)
+4. COBRA ou NÃO a consulta conforme configuração individual de cada profissional
+5. Respeita as configurações INDIVIDUAIS de cada dentista (não usa configuração genérica)
+
+---
+
+## A Clínica de Teste — "Clínica OdontoVida"
+
+```
+Nome: Clínica OdontoVida
+IA: Sofia
+Aceita convênio: SIM (parcialmente — depende do dentista)
+WhatsApp: MockProvider
+Plano: professional
+```
+
+### Profissional 1 — Dra. Ana Beatriz (Clínico Geral)
+```
+consultationFee: "150.00"
+chargesConsultation: true
+pixEnabled: true
+pixMode: "required"         ← PIX OBRIGATÓRIO antes da consulta
+pixKey: "ana@odontovida.com.br"
+pixKeyType: "email"
+pixBank: "Nubank"
+acceptsInsurance: false     ← SOMENTE PARTICULAR
+Horários: Seg/Qua/Sex 08–12 e 14–18, Sáb 08–12
+```
+
+### Profissional 2 — Dr. Marcos Oliveira (Ortodontia)
+```
+consultationFee: "200.00"
+chargesConsultation: true
+pixEnabled: false           ← SEM PIX — pagamento presencial
+acceptsInsurance: true      ← CONVÊNIO apenas Seg e Qua
+Horários:
+  Seg/Qua: 09–17 (aceita convênio)
+  Qui/Sex: 13–19 (somente particular)
+```
+
+### Profissional 3 — Dr. Roberto Santos (Implantodontia)
+```
+consultationFee: "300.00"
+chargesConsultation: false  ← CONSULTA GRATUITA (avaliação)
+pixEnabled: true
+pixMode: "optional"         ← PIX opcional
+pixKey: "11999887766"
+pixKeyType: "phone"
+pixBank: "Itaú"
+acceptsInsurance: false
+Horários: Ter/Qui 08–17
+```
+
+---
+
+## Arquivo a criar
+`artifacts/api-server/src/tests/e2e-clinica-completa.ts`
+Seguir EXATAMENTE o padrão do `e2e-test.ts` existente.
+
+---
+
+## Os 22 cenários de teste
+
+### ══════════════════════════════════════════════
+### BLOCO 1 — EMPATIA E PRIMEIRO CONTATO
+### ══════════════════════════════════════════════
+
+**Cenário 1 — Empatia: lead com dor**
+```
+Lead: "oi, to com muita dor de dente"
+Esperado:
+  ✓ IA demonstra empatia ANTES de qualquer oferta de agendamento
+  ✓ Pergunta sobre a dor / acolhe a situação
+  ✓ Menciona urgência / possibilidade de encaixe
+  ✗ NÃO deve começar já perguntando convênio ou particular
+  ✗ NÃO deve começar já oferecendo horários
+
+Verificar na resposta:
+  - Contém palavras de acolhimento: "entendo", "sinto", "vamos te ajudar",
+    "não se preocupe", "cuidar", "atender" ou similar
+  - NÃO começa com "Você usa convênio ou paga particular?"
+```
+
+**Cenário 2 — Empatia: lead com medo de dentista**
+```
+Lead: "preciso ir ao dentista mas tenho muito medo"
+Esperado:
+  ✓ IA valida o medo sem minimizar ("entendo, muitas pessoas sentem isso")
+  ✓ Menciona que a equipe é preparada para atender com cuidado
+  ✓ Só depois oferece agendamento
+  ✗ NÃO ignora o medo e vai direto para horários
+
+Verificar:
+  - Resposta contém acolhimento do medo
+  - Não vai direto para triagem de convênio
+```
+
+**Cenário 3 — Primeiro contato neutro, triagem correta**
+```
+Lead: "oi, quero marcar uma consulta"
+Esperado:
+  ✓ IA se apresenta como Sofia da Clínica OdontoVida
+  ✓ Faz a triagem: "você utiliza convênio/plano ou vai pagar particular?"
+  ✓ Tom amigável e profissional
+  ✗ NÃO deve já dar horários sem saber se é convênio ou particular
+```
+
+### ══════════════════════════════════════════════
+### BLOCO 2 — PROTOCOLO LEAD PARTICULAR
+### ══════════════════════════════════════════════
+
+**Cenário 4 — Lead particular, protocolo correto com Dra. Ana**
+```
+Lead: "quero marcar consulta, pago particular"
+IA: [oferece opções ou pergunta especialidade]
+Lead: "clínico geral"
+Esperado:
+  ✓ IA menciona Dra. Ana Beatriz
+  ✓ Informa valor da consulta: R$150
+  ✓ Informa que pagamento é via PIX ANTES da consulta
+  ✓ Oferece horários disponíveis
+  ✗ NÃO deve mencionar Dr. Marcos ou Dr. Roberto para clínico geral
+
+Verificar no banco após agendamento:
+  - paymentType = "private"
+  - professionalId = id da Dra. Ana
+```
+
+**Cenário 5 — PIX obrigatório: IA envia chave PIX após agendamento**
+```
+[Continuar do cenário 4 — lead aceita horário]
+Lead: "pode marcar quarta às 14h"
+Esperado:
+  ✓ Agendamento criado no banco com Dra. Ana, quarta 14:00
+  ✓ IA envia chave PIX: "ana@odontovida.com.br" (Nubank)
+  ✓ IA informa o valor: R$150
+  ✓ IA instrui a enviar comprovante após pagar
+  ✗ NÃO deve enviar chave PIX do Dr. Marcos ou Dr. Roberto
+  ✗ NÃO deve enviar chave PIX errada
+
+Verificar na resposta:
+  - Contém "ana@odontovida.com.br" OU "Nubank" OU "R$150"
+  - Contém instrução para enviar comprovante
+```
+
+**Cenário 6 — PIX obrigatório: IA aguarda comprovante**
+```
+[Após envio da chave PIX]
+Lead: [envia imagem de comprovante PIX]
+Esperado:
+  ✓ IA analisa o comprovante via analyzePIXReceipt()
+  ✓ Se válido: confirma recebimento, confirma agendamento
+  ✓ Se inválido: informa gentilmente e pede reenvio
+  ✗ NÃO deve confirmar agendamento sem comprovante válido
+```
+
+**Cenário 7 — Lead particular, Dr. Roberto: consulta GRATUITA**
+```
+Lead: "quero fazer avaliação de implante, pago particular"
+Esperado:
+  ✓ IA menciona Dr. Roberto Santos
+  ✓ Informa que a consulta de avaliação é GRATUITA
+  ✓ Oferece horários Terça ou Quinta
+  ✗ NÃO deve cobrar R$300 (chargesConsultation = false)
+  ✗ NÃO deve enviar chave PIX obrigatória (pixMode = optional)
+
+Verificar:
+  - Resposta contém "gratuita" ou "sem custo" ou "grátis"
+  - NÃO contém "R$300" como cobrança obrigatória
+```
+
+**Cenário 8 — PIX opcional: Dr. Roberto não exige comprovante**
+```
+[Lead agenda com Dr. Roberto]
+Lead: "pode marcar terça às 10h"
+Esperado:
+  ✓ Agendamento criado com Dr. Roberto
+  ✓ IA menciona que aceita PIX (opcional) — tom diferente do obrigatório
+  ✓ NÃO exige comprovante antes de confirmar
+  ✓ Confirma agendamento imediatamente
+  ✗ NÃO deve tratar como PIX obrigatório
+  ✗ NÃO deve enviar a chave PIX do Dr. Roberto como exigência
+
+Verificar:
+  - Agendamento confirmado sem exigência de comprovante
+  - Tom de "aceita PIX" não de "deve pagar antes"
+```
+
+### ══════════════════════════════════════════════
+### BLOCO 3 — PROTOCOLO LEAD CONVÊNIO/PLANO
+### ══════════════════════════════════════════════
+
+**Cenário 9 — Empatia com lead convênio + protocolo correto**
+```
+Lead: "boa tarde, uso plano odontológico"
+Esperado:
+  ✓ IA acolhe com empatia ("Olá! Que bom que nos contactou...")
+  ✓ Tom diferente do lead particular — mais informativo sobre cobertura
+  ✓ Pergunta qual especialidade/necessidade antes de indicar dentista
+  ✓ NÃO deve perguntar se vai pagar a consulta (é convênio)
+  ✗ NÃO deve tratar igual a lead particular
+```
+
+**Cenário 10 — Convênio: direcionamento correto para Dr. Marcos**
+```
+[Continuar cenário 9]
+Lead: "preciso de aparelho dental"
+Esperado:
+  ✓ IA menciona Dr. Marcos Oliveira, ortodontista
+  ✓ Informa que atende convênio Segunda e Quarta
+  ✓ NÃO cobra consulta (convênio cobre)
+  ✓ NÃO envia chave PIX (Dr. Marcos não tem PIX)
+  ✗ NÃO deve direcionar para Dra. Ana (não aceita convênio)
+  ✗ NÃO deve direcionar para Dr. Roberto (não aceita convênio)
+
+Verificar no banco após agendamento:
+  - paymentType = "insurance"
+  - professionalId = id do Dr. Marcos
+```
+
+**Cenário 11 — Convênio em dia não permitido (quinta)**
+```
+Lead: "uso convênio, quero marcar aparelho na quinta"
+Esperado:
+  ✓ IA informa que Dr. Marcos atende convênio APENAS Segunda e Quarta
+  ✓ Oferece Segunda ou Quarta como alternativa
+  ✓ Tom gentil, não burocrático
+  ✗ NÃO deve marcar convênio na quinta
+  ✗ NÃO deve marcar sem avisar sobre a restrição
+
+Verificar:
+  - Resposta menciona Segunda e/ou Quarta como dias de convênio
+  - NÃO cria agendamento na quinta com paymentType = "insurance"
+```
+
+**Cenário 12 — Convênio: especialidade não coberta**
+```
+Lead: "uso plano, quero fazer implante dental"
+Esperado:
+  ✓ IA informa com empatia que implantes geralmente não são cobertos
+  ✓ Explica que seria particular com Dr. Roberto
+  ✓ Menciona que a consulta de avaliação com Dr. Roberto é GRATUITA
+  ✓ Convida para agendar a avaliação
+  ✗ NÃO deve dizer que cobre sem ter certeza
+  ✗ NÃO deve cobrar consulta de R$300 (é gratuita com Dr. Roberto)
+```
+
+**Cenário 13 — Lead convênio se torna particular (objeção resolvida)**
+```
+Lead: "uso convênio mas meu plano não cobre clareamento,
+       posso pagar particular?"
+Esperado:
+  ✓ IA trata como lead particular a partir desse ponto
+  ✓ Direciona para Dra. Ana (clínico geral + estética)
+  ✓ Informa consulta R$150 e PIX obrigatório
+  ✓ Troca suave — não ignora que mencionou convênio antes
+
+Verificar no banco:
+  - paymentType = "private" (não "insurance")
+```
+
+### ══════════════════════════════════════════════
+### BLOCO 4 — PROTOCOLO PACIENTE DA CLÍNICA
+### ══════════════════════════════════════════════
+
+**Cenário 14 — Paciente reconhecido: sem triagem de convênio**
+```
+[Criar paciente no banco: João Silva, consulta com Dra. Ana]
+Paciente envia: "oi, sou o João, preciso remarcar minha consulta"
+Esperado:
+  ✓ IA reconhece João Silva pelo número
+  ✓ Tom mais próximo — "João, que bom! Vamos remarcar..."
+  ✓ NÃO faz triagem de convênio (já é paciente conhecido)
+  ✓ NÃO pergunta se é convênio ou particular
+  ✓ Já sabe qual dentista é o dele (Dra. Ana)
+  ✓ Oferece horários da Dra. Ana diretamente
+
+Verificar:
+  - Resposta contém nome "João" 
+  - NÃO contém pergunta sobre convênio/particular
+```
+
+**Cenário 15 — Paciente cancela: tom correto**
+```
+Paciente: "preciso cancelar minha consulta de amanhã,
+           surgiu um imprevisto no trabalho"
+Esperado:
+  ✓ IA demonstra compreensão ("Entendo, imprevistos acontecem!")
+  ✓ Cancela a consulta
+  ✓ Oferece reagendar para outro momento
+  ✓ Tom acolhedor, não burocrático
+  ✗ NÃO deve ser fria ou apenas confirmar o cancelamento
+
+Verificar no banco:
+  - Status da consulta = "cancelled"
+```
+
+**Cenário 16 — Paciente com histórico: IA personaliza atendimento**
+```
+[Criar paciente com 3 consultas anteriores com Dra. Ana]
+Paciente: "quero marcar mais uma consulta"
+Esperado:
+  ✓ IA reconhece como paciente recorrente
+  ✓ Tom de continuidade ("Que bom te ver de volta!")
+  ✓ Já sugere Dra. Ana (histórico do paciente)
+  ✓ NÃO faz triagem completa de novo
+  ✗ NÃO trata como lead novo
+```
+
+### ══════════════════════════════════════════════
+### BLOCO 5 — CONFIGURAÇÕES INDIVIDUAIS POR DENTISTA
+### ══════════════════════════════════════════════
+
+**Cenário 17 — Cada dentista tem sua chave PIX correta**
+```
+[Agendar com Dra. Ana → verificar chave "ana@odontovida.com.br"]
+[Agendar com Dr. Roberto → verificar chave "11999887766"]
+[Agendar com Dr. Marcos → verificar que NÃO envia PIX]
+
+Para cada agendamento verificar:
+  ✓ Dra. Ana: chave PIX = "ana@odontovida.com.br", banco Nubank
+  ✓ Dr. Roberto: chave PIX = "11999887766", banco Itaú (se lead solicitar)
+  ✓ Dr. Marcos: NENHUMA chave PIX enviada
+  ✗ NUNCA misturar chaves PIX entre dentistas
+```
+
+**Cenário 18 — Cobrança de consulta respeitada por dentista**
+```
+Verificar em 3 agendamentos separados:
+  ✓ Dra. Ana: cobra R$150 → menciona o valor
+  ✓ Dr. Marcos particular: cobra R$200 → menciona o valor
+  ✓ Dr. Roberto: NÃO cobra → menciona "avaliação gratuita"
+  ✗ NUNCA cobrar consulta de quem não cobra
+  ✗ NUNCA dar gratuita para quem cobra
+```
+
+**Cenário 19 — Dr. Marcos: particular na quinta cobra consulta**
+```
+Lead: "pago particular, quero orthodontia, pode ser quinta?"
+Esperado:
+  ✓ IA confirma que Dr. Marcos atende particular na Quinta
+  ✓ Informa valor da consulta: R$200
+  ✓ NÃO envia PIX (pixEnabled = false)
+  ✓ Pagamento presencial
+
+Verificar no banco:
+  - paymentType = "private"
+  - dia = quinta
+```
+
+### ══════════════════════════════════════════════
+### BLOCO 6 — FOLLOW-UPS E QUOTA
+### ══════════════════════════════════════════════
+
+**Cenário 20 — Lembrete 24h respeita dentista da consulta**
+```
+[Criar consulta amanhã com Dr. Roberto]
+[Rodar processFollowUps()]
+Esperado:
+  ✓ Mensagem menciona nome do Dr. Roberto (não outro dentista)
+  ✓ Menciona horário correto
+  ✓ NÃO envia para consultas canceladas
+```
+
+**Cenário 21 — Quota esgotada: mensagem amigável ao lead**
+```
+[Forçar quota esgotada no banco]
+Lead: "oi, quero marcar consulta"
+Esperado:
+  ✓ Lead recebe mensagem amigável
+  ✓ NÃO recebe silêncio
+  ✗ IA NÃO processa com OpenAI (custo zero)
+```
+
+**Cenário 22 — Horário ocupado: IA não confirma conflito**
+```
+[Criar agendamento: Dra. Ana, quarta 14:00]
+Lead: "quero marcar quarta às 14h com a Dra. Ana"
+Esperado:
+  ✓ IA informa que horário está ocupado
+  ✓ Oferece próximo slot disponível
+  ✗ NÃO confirma agendamento duplicado
+```
+
+---
+
+## Helpers de verificação — criar no arquivo de teste
+
+```typescript
+// Verifica empatia na resposta
+function assertHasEmpathy(response: string, context: string): void {
+  const empathyWords = [
+    "entendo", "compreendo", "sinto", "imagino", "sei como",
+    "não se preocupe", "vamos te ajudar", "pode contar",
+    "estamos aqui", "com cuidado", "nossa equipe",
+    "que bom", "fico feliz", "obrigado por"
+  ];
+  const hasEmpathy = empathyWords.some(w =>
+    response.toLowerCase().includes(w)
+  );
+  assert(hasEmpathy,
+    `[${context}] IA não demonstrou empatia. Resposta: "${response.substring(0, 150)}"`
+  );
+}
+
+// Verifica que NÃO fez triagem de convênio para paciente conhecido
+function assertNoInsuranceTriage(response: string, context: string): void {
+  const triageWords = [
+    "convênio ou particular", "plano ou particular",
+    "usa convênio", "tem plano", "como vai pagar"
+  ];
+  const hasTriage = triageWords.some(w =>
+    response.toLowerCase().includes(w)
+  );
+  assert(!hasTriage,
+    `[${context}] IA fez triagem de convênio para paciente conhecido. Resposta: "${response.substring(0, 150)}"`
+  );
+}
+
+// Verifica chave PIX correta por dentista
+function assertCorrectPixKey(
+  response: string,
+  professional: "ana" | "roberto" | "marcos",
+  context: string
+): void {
+  const pixKeys = {
+    ana: "ana@odontovida.com.br",
+    roberto: "11999887766",
+    marcos: null, // não tem PIX
+  };
+  const expectedKey = pixKeys[professional];
+
+  if (professional === "marcos") {
+    // Dr. Marcos não tem PIX — não deve aparecer chave nenhuma
+    assert(
+      !response.includes("pix") && !response.includes("PIX"),
+      `[${context}] Dr. Marcos não tem PIX mas IA enviou chave. Resposta: "${response.substring(0, 150)}"`
+    );
+    return;
+  }
+
+  if (expectedKey) {
+    assert(
+      response.includes(expectedKey),
+      `[${context}] Chave PIX incorreta ou ausente. Esperado: "${expectedKey}". Resposta: "${response.substring(0, 150)}"`
+    );
+  }
+}
+
+// Verifica cobrança de consulta por dentista
+function assertConsultationFee(
+  response: string,
+  professional: "ana" | "roberto" | "marcos_particular",
+  context: string
+): void {
+  const fees = {
+    ana: "150",
+    roberto: null,  // gratuita
+    marcos_particular: "200",
+  };
+  const fee = fees[professional];
+
+  if (!fee) {
+    // Consulta gratuita — verificar que menciona gratuidade
+    const gratuitaWords = ["gratuita", "grátis", "sem custo", "sem cobrança", "cortesia"];
+    const hasGratuita = gratuitaWords.some(w => response.toLowerCase().includes(w));
+    assert(hasGratuita,
+      `[${context}] Dr. Roberto tem consulta gratuita mas IA não mencionou. Resposta: "${response.substring(0, 150)}"`
+    );
+  } else {
+    assert(
+      response.includes(fee),
+      `[${context}] Valor da consulta R$${fee} não mencionado. Resposta: "${response.substring(0, 150)}"`
+    );
+  }
+}
+```
+
+---
+
+## Formato do relatório de diagnóstico
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║     OdontoFlow — Simulação Protocolo de Atendimento v3          ║
+╚══════════════════════════════════════════════════════════════════╝
+
+🏥 Clínica OdontoVida
+👩‍⚕️ Dra. Ana (R$150 + PIX obrigatório, só particular)
+🦷 Dr. Marcos (R$200 particular / convênio Seg+Qua, sem PIX)
+🔬 Dr. Roberto (Consulta GRATUITA + PIX opcional)
+
+────────────────────────────────────────────────────────────────────
+BLOCO 1 — Empatia e Primeiro Contato
+  [resultado de cada cenário com resposta real da IA]
+
+BLOCO 2 — Protocolo Lead Particular
+  [resultado com verificação de PIX e valor]
+
+BLOCO 3 — Protocolo Lead Convênio
+  [resultado com verificação de paymentType no banco]
+
+BLOCO 4 — Protocolo Paciente da Clínica
+  [resultado com verificação de triagem ausente]
+
+BLOCO 5 — Configurações Individuais por Dentista
+  [resultado com chaves PIX e cobranças verificadas]
+
+BLOCO 6 — Follow-ups e Quota
+  [resultado operacional]
+
+════════════════════════════════════════════════════════════════════
+                    DIAGNÓSTICO FINAL
+════════════════════════════════════════════════════════════════════
+
+Total: 22  |  ✅ Pass: ?  |  ❌ Fail: ?  |  Taxa: ?%
+
+🔴 FALHAS CRÍTICAS:
+  [listar com: cenário + input real + resposta real da IA + esperado]
+
+⚠️ ALERTAS (falhas parciais):
+  [listar comportamentos incompletos]
+
+💡 RECOMENDAÇÕES:
+  [o que precisa corrigir no código]
+
+📊 RESPOSTAS COMPLETAS DA IA:
+  [para cada cenário, mostrar a resposta completa da IA —
+   isso é o mais importante para diagnóstico]
+```
+
+Salvar em `test-results/e2e-clinica-completa.json` com respostas completas.
+
+---
+
+## Instruções para a Replit
+
+1. Seguir EXATAMENTE o padrão do `e2e-test.ts` existente
+
+2. Setup: criar tenant + 3 profissionais com TODOS os campos:
+   `consultationFee`, `chargesConsultation`, `pixEnabled`, `pixMode`,
+   `pixKey`, `pixKeyType`, `pixBank`, `acceptsInsurance`, `scheduleConfig`
+
+3. Para cenários de paciente (Bloco 4), criar o paciente no banco
+   ANTES de simular a mensagem
+
+4. O mais importante do relatório é a RESPOSTA COMPLETA DA IA
+   em cada cenário — não apenas pass/fail
+
+5. Teardown apaga tudo do tenant de teste
+
+6. Após criar o arquivo, rodar imediatamente e reportar o diagnóstico
+   completo com as respostas reais

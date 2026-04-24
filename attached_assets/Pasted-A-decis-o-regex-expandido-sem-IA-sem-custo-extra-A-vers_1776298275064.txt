@@ -1,0 +1,215 @@
+A decisão: regex expandido — sem IA, sem custo extra
+A versão híbrida (com GPT-4o-mini como fallback) seria mais robusta a longo prazo, mas tem dois problemas práticos para agora: adiciona latência em todo request que cai em other, e cria uma dependência externa que pode falhar. O intent-detector é chamado antes de qualquer coisa — se ele travar, trava tudo.
+
+A análise dos testes existentes mostra que os buracos do regex atual são completamente previsíveis — são variações naturais do português que qualquer pessoa usaria. Não é necessária IA para cobrir esses casos. Regex expandido resolve 95% dos falsos negativos sem adicionar nenhum risco ou custo.
+
+Os casos que estão caindo em other hoje
+scheduling — faltando
+"reservar uma consulta"
+"marcar hora"
+"quero ir ao dentista"
+"tem espaço na agenda"
+"quero um encaixe"
+"fazer uma consulta"
+"preciso de atendimento"
+"posso marcar pra hoje"
+"quero ir hoje"
+"agendar horário" (com acento)
+outros — faltando
+"nao consigo comparecer" → cancel
+"nao da pra ir" → cancel
+"encaixar em outro dia" → reschedule
+"quanto fica o implante" → price
+"tem previsao de valor" → price
+"voces parcelam" → price
+"nao tenho condicao" → objection
+"to com medo" → objection
+"oi, boa tarde!" → greeting
+"eai" → greeting
+Quando scheduling vira other, o shouldSkipScheduleOffer fica true e a agenda nunca é carregada. A IA responde sem saber os horários disponíveis — daí o comportamento estranho de "não oferecer horário" mesmo quando o lead claramente quer marcar.
+
+O que mudar no arquivo intent-detector.ts
+Passo 1 — Substituir o array INTENT_PATTERNS inteiro
+Substituir cada regex por uma versão expandida. A ordem importa — scheduling deve vir antes de question porque "tem horário?" bate em question mas é scheduling. A estrutura não muda, só o conteúdo de cada RegExp.
+
+const INTENT_PATTERNS: Array<[Intent, RegExp]> = [
+  [
+    "scheduling",
+    /\b(
+      quero\s*(marcar|agendar|reservar|fazer)|
+      vamos\s*(marcar|agendar|reservar)|
+      pode\s*(marcar|agendar|reservar)|
+      (marca|agenda|reserva)\s*(pra|para)\s*mim|
+      preciso\s*(marcar|agendar|reservar|de\s*atendimento)|
+      gostaria\s*de\s*(marcar|agendar|reservar|fazer)|
+      tem\s*(horario|vaga|encaixe|espaco\s*na\s*agenda)|
+      tem\s*como\s*(marcar|agendar)|
+      posso\s*(marcar|agendar|ir)|
+      quero\s*(ir|um\s*encaixe|uma?\s*(consulta|avaliacao|retorno|hora))|
+      (marcar|agendar|reservar|fazer)\s*(uma\s*)?(consulta|avaliacao|retorno)|
+      (marcar|fazer)\s*hora|
+      horario\s*(disponivel|livre|vago)|
+      disponibilidade|
+      vaga\s*na\s*agenda|
+      preciso\s*de\s*uma\s*(consulta|avaliacao)|
+      quero\s*ir\s*(hoje|amanha|essa\s*semana)|
+      agendar|
+      encaixe
+    )\b/ix,
+  ],
+  [
+    "cancellation",
+    /\b(
+      cancelar|desmarcar|cancela|cancelamento|
+      nao\s*vou\s*(poder|conseguir|comparecer|ir|mais)|
+      nao\s*posso\s*(mais|ir|comparecer|nesse\s*dia)|
+      desistir\s*da\s*(consulta|sessao)|
+      nao\s*consigo\s*(mais\s*)?(ir|comparecer)|
+      nao\s*da\s*pra\s*(ir|comparecer)|
+      preciso\s*cancelar|
+      nao\s*vou\s*mais|
+      remarca\s*(pra\s*)?cancelar
+    )\b/ix,
+  ],
+  [
+    "rescheduling",
+    /\b(
+      remarcar|reagendar|
+      mudar\s*(o\s*)?horario|trocar\s*(o\s*)?dia|
+      outro\s*horario|outra\s*data|outro\s*dia|
+      adiar|mudar\s*a\s*data|alterar\s*o\s*horario|
+      nao\s*posso\s*nesse\s*horario|
+      esse\s*horario\s*nao|
+      nao\s*da\s*(nesse\s*)?dia|
+      consegue\s*outro\s*(horario|dia)|
+      encaixar\s*(em\s*)?outro\s*(dia|horario)
+    )\b/ix,
+  ],
+  [
+    "price_inquiry",
+    /\b(
+      quanto\s*(custa|fica|e|seria|vai|cobram|fica\s*o)|
+      preco|valor|tabela\s*de\s*preco|orcamento|
+      parcela(mento)?|financiamento|
+      quanto\s*vao\s*cobrar|
+      me\s*passa\s*o\s*valor|
+      qual\s*o\s*(preco|valor|custo)|
+      tem\s*(previsao\s*de\s*valor|desconto)|
+      aceita\s*parcelar|voces\s*parcelam|
+      em\s*quantas\s*vezes|
+      forma\s*de\s*pagamento|pix|boleto|cartao|
+      quanto\s*fica\s*o\s*(implante|clareamento|aparelho|lente)
+    )\b/ix,
+  ],
+  [
+    "objection",
+    /\b(
+      muito\s*caro|[ée]\s*caro|t[aá]\s*caro|
+      nao\s*tenho\s*(dinheiro|grana|condicao\s*(agora)?)|
+      sem\s*grana|apertado\s*financeiramente|nao\s*tenho\s*condicao|
+      nao\s*sei\s*(se\s*quero|se\s*posso|ainda)|
+      vou\s*pensar|deixa\s*eu\s*pensar|
+      depois\s*eu\s*(ligo|marco|vejo)|
+      agora\s*nao|sem\s*tempo|nao\s*tenho\s*tempo|
+      tenho\s*medo|t[oó]\s*com\s*medo|receio|
+      medo\s*de\s*(dentista|dor|agulha|extrair|arrancar)|
+      doi\s*muito|vai\s*doer|[eé]\s*doloroso|
+      trauma|nervoso|ansios[ao]|ansiedade|fobia|
+      fico\s*nervoso|t[oó]\s*nervos[ao]
+    )\b/ix,
+  ],
+  [
+    "question",
+    /\b(
+      qual|como\s*([eé]|funciona|s[aã]o|fica)|
+      onde\s*(fica|[eé]|voc[eê]s)|
+      quando\s*(voc[eê]s\s*)?(abrem|fecham|atendem)|
+      que\s*horas|aceita\s*conv[eê]nio|quais\s*conv[eê]nios|
+      voc[eê]s\s*aceitam|o\s*que\s*[eé]|
+      diferen[cç]a\s*entre|como\s*funciona|
+      quanto\s*tempo\s*(dura|leva)|
+      [eé]\s*doloroso|precisa\s*de\s*anestesia|
+      quantas\s*sess[oõ]es|tem\s*estacionamento|
+      como\s*chego|quais\s*s[aã]o\s*os
+    )\b/ix,
+  ],
+  [
+    "greeting",
+    /^(
+      oi|ol[aá]|oie|oii+|
+      ol[aá]\s*tudo\s*bem|oi\s*tudo\s*bem|
+      bom\s*dia|boa\s*tarde|boa\s*noite|
+      opa|hey|e+a+i+|iae|
+      oi\s*boa\s*(tarde|noite|manh[aã])|
+      boa\s*(tarde|noite|manh[aã])|
+      tudo\s*(bem|bom|certo)|
+      como\s*vai|e\s*ai\s*gente
+    )[!.,\s]*$/ix,
+  ],
+];
+O que mudou em cada intenção
+scheduling: adicionado "reservar", "fazer consulta", "marcar hora", "encaixe", "posso ir", "quero um encaixe", "quero ir hoje/amanhã", "tem espaço na agenda". Flag x ativada (modo verbose — permite espaços e comentários dentro do regex para manutenção futura).
+
+cancellation: adicionado "não dá pra ir", "não posso nesse dia", "não consigo comparecer".
+
+rescheduling: adicionado "encaixar em outro dia/horário".
+
+price_inquiry: adicionado "vocês parcelam", "previsão de valor", "quanto fica o [procedimento]".
+
+objection: adicionado "tô com medo", "não tenho condição agora", variações com acento.
+
+question: adicionado variações com acento (convênio, é, são, vocês).
+
+greeting: adicionado "eai", "iae", "oi!!!", variações com acento.
+
+Passo 2 — Adicionar normalização de acentos antes do match
+Adicionar um passo de normalização antes de testar os padrões. Isso elimina a necessidade de colocar variações com/sem acento em cada regex:
+
+function normalize(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .toLowerCase()
+    .trim();
+}
+
+export async function detectIntent(message: string): Promise {
+  const normalized = normalize(message);
+
+  for (const [intent, pattern] of INTENT_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return intent;
+    }
+  }
+
+  return "other";
+}
+Com isso, "agendá-lo", "horário", "convênio" e "não" passam a bater nos padrões sem precisar de variantes duplicadas. As regexes ficam mais curtas e fáceis de manter.
+
+Testes novos para adicionar
+Os testes existentes já cobrem o caminho feliz. Os novos devem cobrir os casos que quebravam:
+
+// scheduling — novos casos
+it("detecta 'reservar uma consulta'", ...)  → "scheduling"
+it("detecta 'marcar hora'", ...)            → "scheduling"
+it("detecta 'quero um encaixe'", ...)       → "scheduling"
+it("detecta 'tem espaço na agenda'", ...)   → "scheduling"
+it("detecta 'posso marcar pra hoje'", ...)  → "scheduling"
+it("detecta 'quero ir amanhã'", ...)        → "scheduling"
+it("detecta 'fazer uma consulta'", ...)     → "scheduling"
+it("detecta 'preciso de atendimento'", ...) → "scheduling"
+
+// greeting — com acento e variações
+it("detecta 'olá'", ...)                    → "greeting"
+it("detecta 'eai'", ...)                    → "greeting"
+it("detecta 'boa tarde!' (com !)", ...)     → "greeting"
+
+// cancellation — naturais
+it("detecta 'não dá pra ir'", ...)          → "cancellation"
+it("detecta 'não posso nesse dia'", ...)    → "cancellation"
+
+// price — naturais
+it("detecta 'vocês parcelam'", ...)         → "price_inquiry"
+it("detecta 'quanto fica o implante'", ...) → "price_inquiry"
+Quando considerar a versão híbrida no futuro
+A versão híbrida (regex → se other → GPT-4o-mini) faz sentido quando o sistema estiver estável e você quiser cobrir mensagens imprevisíveis que regex nunca vai pegar — metáforas, gírias novas, frases muito indiretas ("minha filha tá com dor, o que faço?"). O custo seria de ~50 tokens por chamada que cai em other, com cache de resultado por 60s. Mas para agora, o regex expandido é a escolha certa: zero latência extra, zero custo, zero risco de falha externa.

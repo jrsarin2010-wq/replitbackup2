@@ -1,0 +1,25 @@
+Itens 1, 2, 3, 4, 6, 7 — seguros, sem efeito futuro negativo:
+
+Item 1 (histórico 12 em vez de 20): a IA continua vendo todo o contexto, só que o que é antigo vem como resumo (que ela mesma gerou). É exatamente como humano funciona: lembra do "tema" da conversa antiga, não cada palavra. Se um dia quiser voltar pra 20, é mudar 1 número.
+
+Item 2 (teto de tokens menor): limita só o tamanho máximo da resposta em fluxos onde a saída já é estruturada (ex: extrair "dia + hora" do agendamento). Nunca vai cortar fala do paciente.
+
+Item 3 (resumo a cada 8 mensagens em vez de 5): o resumo continua sendo gerado e atualizado, só com cadência um pouco maior. Imperceptível.
+
+Item 4 (pular retry em violação leve): hoje, quando a IA viola uma regra, o sistema chama ela de novo pra corrigir. A blindagem que acabamos de fazer (task #17) já garante que, se mesmo assim falhar, vai pro texto seguro determinístico. Pular o retry em violações pequenas vai direto pro texto seguro — qualidade igual ou melhor, custo menor.
+
+Item 6 (filtrar profissionais por convênio): já existe parcialmente. Estender só amplia uma decisão que o paciente já tomou (escolheu convênio).
+
+Item 7 (dedup de visão em comprovante PIX): hoje a mesma foto de comprovante passa por 2 análises de visão. A 2ª é redundante. Tirar não muda nada visível.
+
+Item 5 (aprendizado seletivo) — ressalva honesta:
+Hoje, toda conversa que termina gera um aprendizado em background (4k+1500 tokens). A proposta é rodar só em conversas "interessantes" (com agendamento, lead novo ou feedback).
+
+Risco real: você perde insights agregados de conversas "triviais". Se um padrão estranho aparecer só em conversas que não agendaram (ex: muita gente desistindo na hora de falar de preço), o aprendizado pode demorar mais a captar.
+Mitigação: dá pra manter um modo "amostra" — rodar em 100% das conversas interessantes + 20% das triviais aleatoriamente. Custa pouco mais e mantém visibilidade.
+Problemas futuros possíveis (em qualquer caso):
+
+Se a OpenAI renomear ou descontinuar o modelo gpt-5.4-mini, vai precisar trocar — mas isso é independente das otimizações.
+Se um dia você quiser que a IA lembre de detalhes muito antigos da mesma conversa (15+ mensagens atrás), o item 1 reduz isso. Hoje você não usa esse comportamento.
+Nenhuma dessas mudanças mexe em banco de dados, em integração externa, ou em coisa que comprometa pacientes existentes. É reversível em minutos.
+Minha recomendação: aplicar 1, 2, 3, 4, 6, 7 agora (~35-50% de economia, risco zero) e deixar o item 5 com a mitigação de amostra de 20% — você ainda economiza bem e não perde aprendizado.

@@ -1,0 +1,54 @@
+Existe um bug crítico no mode-resolver.ts e no lead-engine.ts que faz a IA tratar leads particulares como convênio por falso positivo.
+Teste que confirma o bug:
+Mensagem: "oi, tenho um plano de visitar a clínica essa semana"
+Resultado errado: IA respondeu com tom de convênio
+Resultado esperado: IA fez triagem normal (perguntou plano ou particular)
+Corrigir os 4 pontos abaixo:
+1. Em lead-engine.ts, revisar o INSURANCE_DECLARED_PATTERN. O padrão atual captura "tenho um plano" em qualquer contexto. Precisa exigir contexto odontológico/saúde explícito. Exemplos que DEVEM detectar convênio:
+"uso convênio Unimed"
+"tenho plano odontológico"
+"meu plano é Bradesco dental"
+"atende Amil dental?"
+"aceita SulAmérica?"
+"tenho plano de saúde bucal"
+Exemplos que NÃO DEVEM detectar convênio:
+"tenho um plano de visitar"
+"qual o plano de tratamento?"
+"tenho plano de pagar parcelado"
+"meu plano é ir semana que vem"
+A correção é adicionar âncoras odontológicas ao regex: as palavras "plano" e "tenho" sozinhas não são suficientes — precisam estar acompanhadas de termos como "odontológico", "dental", "saúde bucal", nome de operadora conhecida, ou "convênio".
+2. Em mode-resolver.ts, adicionar proteção extra — só ativar CONVENIO_AGENDAR quando o contato CONFIRMOU explicitamente (triageComplete = true), não apenas quando foi detectado por regex:
+typescript// ANTES:
+if (insuranceMode.isInsurance) {
+  return { mode: "CONVENIO_AGENDAR", reason: "insurance_declared" };
+}
+
+// DEPOIS:
+if (insuranceMode.isInsurance && insuranceMode.triageComplete) {
+  return { mode: "CONVENIO_AGENDAR", reason: "insurance_confirmed" };
+}
+// isInsurance detectado mas sem triageComplete = suspeita, não confirmação
+// → cai no bloco de triagem abaixo normalmente
+if (clinicAcceptsInsurance && !insuranceMode.triageComplete) {
+  return { mode: "CONVENIO_TRIAGEM", reason: "triage_pending" };
+}
+3. Em prompt-helpers.ts, na função buildPixInstructionsSection, adicionar parâmetro isInsuranceContact e nunca injetar PIX para convênio:
+typescriptexport function buildPixInstructionsSection(
+  professionals: Array<...>,
+  isInsuranceContact: boolean = false
+): string {
+  if (isInsuranceContact) return "";
+  // ... resto igual
+}
+Atualizar a chamada no prompt-builder.ts:
+typescript${buildPixInstructionsSection(activeProfessionals, contactDeclaredInsurance)}
+4. Em prompt-builder.ts, corrigir chargesConsultation para nunca cobrar consulta de convênio, independente da configuração:
+typescriptconst chargesConsultation = (() => {
+  if (contactDeclaredInsurance) return false; // convênio nunca paga consulta
+  if (singleProfessional) return singleProfessional.chargesConsultation !== false;
+  return settings?.chargesConsultation !== false;
+})();
+Após as correções:
+1. Rodar os testes unitários: pnpm --filter @workspace/api-server run test
+2. Testar manualmente com a mensagem "oi, tenho um plano de visitar a clínica essa semana" — IA deve fazer triagem normal, não tom de convênio
+3. Testar com "uso convênio Unimed" — IA deve ativar modo convênio corretamente"

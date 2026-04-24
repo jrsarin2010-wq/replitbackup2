@@ -9,7 +9,6 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
-runButton = "Project"
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -20,9 +19,25 @@ path = "scripts/post-merge.sh"
 timeoutMs = 20000
 
 [[ports]]
+localPort = 5000
+externalPort = 5000
+
+[[ports]]
 localPort = 8080
 externalPort = 8080
 
 [[ports]]
 localPort = 8081
 externalPort = 80
+
+[userenv]
+
+[userenv.shared]
+DATA_ENCRYPTION_KEY = "77a39ab911a1d05be7aaa0a8935844f98661e452f3d00cee6ba484943c21f444"
+JWT_SECRET = "vVwz2YOXma93vqIK_xzTfuYKwA3WR4KUE6ansLurfnDwryPM-xHiNEjeRypVcEJZ"
+ADMIN_API_KEY = "GVgUBDBdhU3Cj7jLmC20us8MRxNUYBnXNY25_YM_Fw4"
+WEBHOOK_SECRET = "sf1WHz5hqo0Cn-ctNK4eVn1fzxvX1Zid6w7plHWoobI"
+EVOLUTION_API_URL = "https://n8n-evolution-api.mq6ww5.easypanel.host"
+EVOLUTION_API_KEY = "xfaa8GDyekJ5zIfz8XtQLgUsdFV8e5QK"
+NODE_ENV = "development"
+LOG_LEVEL = "info"

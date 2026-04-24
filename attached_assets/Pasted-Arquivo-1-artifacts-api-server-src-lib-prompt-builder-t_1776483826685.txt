@@ -1,0 +1,72 @@
+Arquivo 1: artifacts/api-server/src/lib/prompt-builder.ts
+Mudança 1A — adicionar o campo na interface BuildSystemPromptOptions:
+Encontre:
+tsexport interface BuildSystemPromptOptions {
+  preloadedLead?: PreloadedLead;
+  preloadedTopStrategies?: PreloadedTopStrategies;
+  conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+  isFreePlan?: boolean;
+  /** When set, the user only sent a greeting but a recent topic exists — instruct
+   *  the AI to resume that topic instead of restarting with "como posso ajudar". */
+  topicResumeHint?: string;
+  /** [SISTEMA: …] hints to inject at the end of the dynamic context block
+   *  (kept out of userContent so the patient message stays clean). */
+  systemHints?: string[];
+  /** Estimated tokens already used by identity prompt + history + user content.
+   *  Used by the dynamic-context trimmer to compute a tighter budget. */
+  alreadyUsedTokens?: number;
+}
+Substitua por:
+tsexport interface BuildSystemPromptOptions {
+  preloadedLead?: PreloadedLead;
+  preloadedTopStrategies?: PreloadedTopStrategies;
+  conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+  isFreePlan?: boolean;
+  /** When set, the user only sent a greeting but a recent topic exists — instruct
+   *  the AI to resume that topic instead of restarting with "como posso ajudar". */
+  topicResumeHint?: string;
+  /** [SISTEMA: …] hints to inject at the end of the dynamic context block
+   *  (kept out of userContent so the patient message stays clean). */
+  systemHints?: string[];
+  /** Estimated tokens already used by identity prompt + history + user content.
+   *  Used by the dynamic-context trimmer to compute a tighter budget. */
+  alreadyUsedTokens?: number;
+  /** Pre-computed clinicAcceptsInsurance from ai-engine (settings OR any professional).
+   *  When provided, used as the single source of truth — avoids recalculating
+   *  here and diverging from what ai-engine already decided for triage/scheduling. */
+  clinicAcceptsInsurance?: boolean;
+}
+
+Mudança 1B — usar o valor recebido em vez de recalcular (linha 161):
+Encontre:
+ts  const clinicAcceptsInsurance = settings?.acceptsInsurance === true;
+Substitua por:
+ts  const clinicAcceptsInsurance =
+    opts.clinicAcceptsInsurance ?? (settings?.acceptsInsurance === true);
+
+Arquivo 2: artifacts/api-server/src/lib/ai-engine.ts
+Mudança 2 — passar o valor calculado no opts (dentro do buildSplitPrompt):
+Encontre:
+ts    {
+      preloadedLead,
+      preloadedTopStrategies,
+      conversationHistory: history,
+      isFreePlan: tenantIsFreePlan,
+      topicResumeHint,
+      systemHints,
+      alreadyUsedTokens,
+    },
+Substitua por:
+ts    {
+      preloadedLead,
+      preloadedTopStrategies,
+      conversationHistory: history,
+      isFreePlan: tenantIsFreePlan,
+      topicResumeHint,
+      systemHints,
+      alreadyUsedTokens,
+      clinicAcceptsInsurance,
+    },
+
+São literalmente 1 linha nova na interface, 1 linha alterada, e 1 linha nova no opts. Nenhum outro arquivo precisa mudar, nenhum teste quebra, e o comportamento atual de todos os outros chamadores do buildSplitPrompt permanece igual porque o campo é opcional com fallback para o comportamento antigo.
+Depois de aplicar, vale rodar pnpm run typecheck no terminal do Replit para confirmar que está tudo certo.

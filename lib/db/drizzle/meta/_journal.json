@@ -1,0 +1,90 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1776007269249,
+      "tag": "0000_add_cartesia_voice",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776093427523,
+      "tag": "0001_brave_frightful_four",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776196800000,
+      "tag": "0002_performance_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776743972292,
+      "tag": "0003_drop_dental_conv_quota_contacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776744000000,
+      "tag": "0004_sync_last_zeroed_notif_column",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777003200000,
+      "tag": "0005_task15_legal_protection",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777017600000,
+      "tag": "0006_task17_ai_response_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777190400000,
+      "tag": "0007_task14_inbound_calls",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777276800000,
+      "tag": "0008_task17_subscription_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777363200000,
+      "tag": "0009_task20_plan_activation_refunds",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776868176548,
+      "tag": "0010_task22_plan_change",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1777536000000,
+      "tag": "0011_task31_normalize_max_professionals",
+      "breakpoints": true
+    }
+  ]
+}

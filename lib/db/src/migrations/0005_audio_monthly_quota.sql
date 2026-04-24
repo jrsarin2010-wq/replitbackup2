@@ -1,0 +1,3 @@
+ALTER TABLE dental_audio_credits
+  ADD COLUMN IF NOT EXISTS monthly_chars_used INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS monthly_reset_date TIMESTAMPTZ NOT NULL DEFAULT NOW();
