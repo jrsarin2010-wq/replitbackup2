@@ -43,7 +43,7 @@ export async function maybeUpdateConversationSummary(
       .join("\n");
 
     const response = await client.chat.completions.create({
-      model: "gpt-5.4-nano",
+      model: "gpt-5-nano",
       max_completion_tokens: 200,
       temperature: 0,
       messages: [

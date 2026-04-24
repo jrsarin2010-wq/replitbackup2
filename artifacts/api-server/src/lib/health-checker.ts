@@ -138,7 +138,7 @@ export async function checkOpenAI(): Promise<DependencyStatus> {
   try {
     await withTimeout(
       globalOpenai.chat.completions.create({
-        model: "gpt-5.4-nano",
+        model: "gpt-5-nano",
         messages: [{ role: "user", content: "ping" }],
         max_completion_tokens: 1,
       }),

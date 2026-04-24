@@ -371,8 +371,8 @@ router.get("/audit/ai-modes", async (req: Request, res: Response) => {
 const MODEL_PRICING_USD_PER_1M: Record<string, { prompt: number; completion: number; cached: number }> = {
   "gpt-5.4": { prompt: 2.50, completion: 15.00, cached: 0.25 },
   "gpt-5.1": { prompt: 2.00, completion: 8.00, cached: 1.00 },
-  "gpt-5.4-mini": { prompt: 0.75, completion: 4.50, cached: 0.075 },
-  "gpt-5.4-nano": { prompt: 0.20, completion: 1.25, cached: 0.02 },
+  "gpt-5-mini": { prompt: 0.75, completion: 4.50, cached: 0.075 },
+  "gpt-5-nano": { prompt: 0.20, completion: 1.25, cached: 0.02 },
 };
 const DEFAULT_PRICING = { prompt: 2.00, completion: 8.00, cached: 1.00 };
 const USD_TO_BRL = Number(process.env.USD_TO_BRL || "5.50");

@@ -129,7 +129,7 @@ export function buildDentalAssistantOverrides(params: {
     firstMessage: config.firstMessage,
     model: {
       provider: "openai",
-      model: "gpt-5.4-nano",
+      model: "gpt-5-nano",
       messages: [
         {
           role: "system",
@@ -169,7 +169,7 @@ export function buildInboundAssistantConfig(params: {
     transcriber: { provider: "deepgram", model: "nova-2", language: "pt-BR" },
     model: {
       provider: "openai",
-      model: "gpt-5.4-nano",
+      model: "gpt-5-nano",
       messages: [
         {
           role: "system",

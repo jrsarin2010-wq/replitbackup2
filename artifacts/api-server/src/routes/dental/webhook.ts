@@ -1373,7 +1373,7 @@ router.post("/whatsapp", async (req, res) => {
         // Task #12: marca a origem para auditoria distinguir respostas
         // geradas pela IA das mensagens enviadas manualmente do painel.
         externalId: `ai:reply:${Date.now()}`,
-        aiModel: process.env.AI_MODEL_NAME || "gpt-5.4-nano",
+        aiModel: process.env.AI_MODEL_NAME || "gpt-5-nano",
         promptVersion: process.env.AI_PROMPT_VERSION || "v1",
       }).catch((err) => {
         logger.error({ err, tenantId }, "Failed to save outbound message");

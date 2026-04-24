@@ -364,7 +364,7 @@ export async function extractAndSaveMemories(
       .join("\n");
 
     const response = await client.chat.completions.create({
-      model: "gpt-5.4-nano",
+      model: "gpt-5-nano",
       max_completion_tokens: 500,
       temperature: 0.3,
       messages: [
@@ -440,7 +440,7 @@ export async function detectAndSaveObjections(
       .join("\n");
 
     const response = await client.chat.completions.create({
-      model: "gpt-5.4-nano",
+      model: "gpt-5-nano",
       max_completion_tokens: 500,
       temperature: 0.3,
       messages: [
@@ -499,7 +499,7 @@ export async function extractAndSaveKnowledge(
       .join("\n");
 
     const response = await client.chat.completions.create({
-      model: "gpt-5.4-nano",
+      model: "gpt-5-nano",
       max_completion_tokens: 500,
       temperature: 0.3,
       messages: [
@@ -890,7 +890,7 @@ async function _executeConversationLearning(
       .join("\n");
 
     const response = await client.chat.completions.create({
-      model: "gpt-5.4-nano",
+      model: "gpt-5-nano",
       max_completion_tokens: 1500,
       temperature: 0.3,
       messages: [

@@ -1,5 +1,5 @@
 /**
- * Métricas de custo da IA principal (gpt-5.4-mini).
+ * Métricas de custo da IA principal (gpt-5-mini).
  *
  * Mantém um ring buffer in-memory das últimas 100 chamadas para que o painel
  * admin mostre, em tempo real:

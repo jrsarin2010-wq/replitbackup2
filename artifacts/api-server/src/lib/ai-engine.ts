@@ -84,7 +84,7 @@ function toOwnerGender(v: string | null | undefined): OwnerGender {
 const PEAK_TIMEOUT_MS = 8_000;
 
 /**
- * Returns true if an OpenAI error should trigger a fallback to gpt-5.4-mini
+ * Returns true if an OpenAI error should trigger a fallback to gpt-5-mini
  * instead of being propagated. Covers:
  *   - 429 RateLimitError (TPM/RPM quota exhausted on shared key)
  *   - 503 / 529 (OpenAI overloaded — Anthropic-style status sometimes seen)
@@ -1300,12 +1300,12 @@ export async function processIncomingMessage(
   const replyMaxTokens = skipAvailability ? 400 : 600;
   // Quando AI_REASONING_EFFORT=low|minimal, sobra orçamento de tokens (o modelo
   // gasta menos em raciocínio interno) — aumentamos o teto da resposta em ~200
-  // APENAS no gpt-5.4-mini, para evitar truncamento de APT_CARD/JSON.
+  // APENAS no gpt-5-mini, para evitar truncamento de APT_CARD/JSON.
   const replyMaxTokensGpt5 = bumpTokensForLowReasoning(replyMaxTokens);
 
   // Helper to build the completion call (avoids repetition between primary and fallback).
-  // Aplica prompt_cache_key + reasoning_effort APENAS no gpt-5.4-mini. O fallback
-  // (gpt-5.4-mini) recebe os parâmetros mínimos de antes — esse modelo não usa
+  // Aplica prompt_cache_key + reasoning_effort APENAS no gpt-5-mini. O fallback
+  // (gpt-5-mini) recebe os parâmetros mínimos de antes — esse modelo não usa
   // reasoning tokens e o cache key não tem efeito relevante nele.
   const makeCall = (callModel: string, signal?: AbortSignal) => {
     const isGpt5 = callModel.startsWith("gpt-5");
@@ -1368,7 +1368,7 @@ export async function processIncomingMessage(
 
   // Captura métricas de cache hit (vem em prompt_tokens_details.cached_tokens
   // quando a OpenAI aplica o desconto de prompt cache). Só registra se foi a
-  // chamada principal (gpt-5.4-mini) — o fallback distorce a média.
+  // chamada principal (gpt-5-mini) — o fallback distorce a média.
   const usage = (response as { usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } }).usage;
   const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
   const promptTokensFinal = usage?.prompt_tokens ?? 0;
@@ -1381,7 +1381,7 @@ export async function processIncomingMessage(
   }
 
   // max_tokens_effective reflects the actual model used (aiModel), not the selected one —
-  // when fallback kicked in, aiModel is gpt-5.4-mini which doesn't use the bumped limit.
+  // when fallback kicked in, aiModel is gpt-5-mini which doesn't use the bumped limit.
   const isGpt5Final = aiModel.startsWith("gpt-5");
   logger.info(
     { tenantId, conversationId, model_selected: selectedModel, model_used: aiModel, model_reason: modelSelection.reason, fallback_reason: fallbackReason, peak, aggregated_count: aggregatedCount, topic_resume: !!topicResumeHint, wait_ms_total: waitMsTotal, max_tokens_used: replyMaxTokens, max_tokens_effective: isGpt5Final ? replyMaxTokensGpt5 : replyMaxTokens, cached_tokens: cachedTokens, prompt_tokens: usage?.prompt_tokens ?? 0 },
@@ -1931,7 +1931,7 @@ export async function transcribeAudio(audioBuffer: Buffer, format: "wav" | "mp3"
 export async function analyzeImage(tenantId: number, imageBase64: string, mimeType: string = "image/jpeg"): Promise<string> {
   const client = await getOpenAIClient(tenantId);
   const response = await client.chat.completions.create({
-    model: "gpt-5.4-mini",
+    model: "gpt-5-mini",
     max_completion_tokens: bumpTokensForLowReasoning(512),
     ...buildGpt5Extras({ tenantId, namespace: "dental-img" }),
     messages: [
@@ -2004,7 +2004,7 @@ Formato obrigatorio da resposta:
 Responda em portugues do Brasil, de forma clara e objetiva.`;
 
   const response = await client.chat.completions.create({
-    model: "gpt-5.4-mini",
+    model: "gpt-5-mini",
     max_completion_tokens: bumpTokensForLowReasoning(512),
     ...buildGpt5Extras({ tenantId, namespace: "dental-pix" }),
     messages: [

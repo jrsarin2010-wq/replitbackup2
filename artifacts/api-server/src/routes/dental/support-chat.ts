@@ -361,7 +361,7 @@ router.post("/", async (req, res) => {
     }
 
     const completion = await client.chat.completions.create({
-      model: "gpt-5.4-nano",
+      model: "gpt-5-nano",
       messages: [
         { role: "system", content: systemPrompt },
         ...messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
@@ -388,7 +388,7 @@ router.post("/", async (req, res) => {
 
 async function detectAndSaveFeedback(client: OpenAI, tenantId: number, userMessage: string): Promise<void> {
   const detection = await client.chat.completions.create({
-    model: "gpt-5.4-nano",
+    model: "gpt-5-nano",
     messages: [
       {
         role: "system",

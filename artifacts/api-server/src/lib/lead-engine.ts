@@ -520,7 +520,7 @@ REGRAS:
   const { buildGpt5Extras, bumpTokensForLowReasoning } = await import("./ai-tuning");
   const remarkClient = await getOpenAIClient(tenantId);
   const response = await remarkClient.chat.completions.create({
-    model: "gpt-5.4-mini",
+    model: "gpt-5-mini",
     max_completion_tokens: bumpTokensForLowReasoning(150),
     ...buildGpt5Extras({ tenantId, namespace: "dental-remark" }),
     messages: [{ role: "user", content: prompt }],

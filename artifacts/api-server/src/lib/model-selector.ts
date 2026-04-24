@@ -69,7 +69,7 @@ export interface ModelSelection {
 /**
  * Returns the best model for this conversation context.
  * Call this BEFORE the OpenAI completion call and use the returned `model`
- * as the primary model. The existing timeout/429/503 fallback to gpt-5.4-nano
+ * as the primary model. The existing timeout/429/503 fallback to gpt-5-nano
  * continues to act as a secondary safety net regardless of which model is
  * selected here.
  */

@@ -1,5 +1,5 @@
 /**
- * Helpers de otimização de custo do gpt-5.4-mini.
+ * Helpers de otimização de custo do gpt-5-mini.
  *
  * - resolveReasoningEffort: lê AI_REASONING_EFFORT (default: "medium" — sem mudança).
  *   Valores aceitos: "minimal" | "low" | "medium" | "high".
