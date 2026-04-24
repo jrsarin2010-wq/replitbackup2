@@ -57,7 +57,7 @@ externalPort = 80
 [userenv.shared]
 DATA_ENCRYPTION_KEY = "77a39ab911a1d05be7aaa0a8935844f98661e452f3d00cee6ba484943c21f444"
 JWT_SECRET = "vVwz2YOXma93vqIK_xzTfuYKwA3WR4KUE6ansLurfnDwryPM-xHiNEjeRypVcEJZ"
-ADMIN_API_KEY = "a5029e0e033c4d5b4f5ece66335baac0958a0fe6c558c194d234606c9cc03617"
+ADMIN_API_KEY = "luccapapai"
 WEBHOOK_SECRET = "sf1WHz5hqo0Cn-ctNK4eVn1fzxvX1Zid6w7plHWoobI"
 EVOLUTION_API_URL = "https://n8n-evolution-api.mq6ww5.easypanel.host"
 EVOLUTION_API_KEY = "xfaa8GDyekJ5zIfz8XtQLgUsdFV8e5QK"
