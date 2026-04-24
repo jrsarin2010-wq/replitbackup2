@@ -328,8 +328,12 @@ async function forwardToWebhook(
   if (siblingExternalIds.length > 0) {
     payload.siblingExternalIds = siblingExternalIds;
   }
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.WEBHOOK_SECRET) {
+    headers["x-webhook-token"] = process.env.WEBHOOK_SECRET;
+  }
   await axios.post(webhookUrl, payload, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     timeout: 30000,
   });
 }
