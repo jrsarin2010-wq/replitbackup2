@@ -11,8 +11,9 @@ import {
   dentalActivityTable,
   dentalSettingsTable,
   tenantsTable,
+  birthdayGreetingsSentTable,
 } from "@workspace/db";
-import { eq, and, lte, lt, desc, sql } from "drizzle-orm";
+import { eq, and, lte, lt, desc, inArray, notInArray, sql } from "drizzle-orm";
 import { getProviderForTenant } from "./lib/whatsapp-provider";
 import { getCachedSettings } from "./lib/cache";
 import { generateRemarketingMessage, getOpenAIClient } from "./lib/ai-engine";
@@ -664,21 +665,15 @@ async function processExpiredTakeovers() {
   }
 }
 
+/**
+ * @deprecated A tabela `birthday_greetings_sent` agora vive no schema do
+ * Drizzle (`lib/db/src/schema/birthday_greetings_sent.ts`) e é gerenciada
+ * exclusivamente via `pnpm db:push`. Esta função permanece como no-op
+ * apenas para callers legados (e2e-test antigo); pode ser removida após
+ * próxima limpeza.
+ */
 export async function ensureBirthdayTable() {
-  try {
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS birthday_greetings_sent (
-        id SERIAL PRIMARY KEY,
-        tenant_id INTEGER NOT NULL,
-        patient_id INTEGER NOT NULL,
-        year INTEGER NOT NULL,
-        sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        UNIQUE(tenant_id, patient_id, year)
-      )
-    `);
-  } catch (err) {
-    logger.error({ err }, "Failed to create birthday_greetings_sent table");
-  }
+  // intencionalmente vazio — schema é fonte de verdade
 }
 
 export async function processBirthdayGreetings() {
@@ -703,6 +698,21 @@ export async function processBirthdayGreetings() {
       }
       if (currentHour !== (settings.birthdayHour ?? 9)) continue;
 
+      // Lista de pacientes que JÁ receberam saudação esse ano — Drizzle tipado.
+      const alreadySentRows = await db
+        .select({ patientId: birthdayGreetingsSentTable.patientId })
+        .from(birthdayGreetingsSentTable)
+        .where(
+          and(
+            eq(birthdayGreetingsSentTable.tenantId, tenant.id),
+            eq(birthdayGreetingsSentTable.year, currentYear),
+          ),
+        );
+      const alreadySentIds = alreadySentRows.map((r) => r.patientId);
+
+      // Filtro de aniversariantes do dia (mês/dia) precisa rodar via SQL bruto
+      // porque `birth_date` é varchar com formato YYYY-MM-DD — Drizzle não tem
+      // helper nativo pra TO_DATE/EXTRACT. Mantemos só essa parte como sql.
       const birthdayPatients = await db.execute<{
         id: number;
         name: string;
@@ -714,13 +724,12 @@ export async function processBirthdayGreetings() {
           AND birth_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
           AND EXTRACT(MONTH FROM TO_DATE(birth_date, 'YYYY-MM-DD')) = ${currentMonth}
           AND EXTRACT(DAY FROM TO_DATE(birth_date, 'YYYY-MM-DD')) = ${currentDay}
-          AND id NOT IN (
-            SELECT patient_id FROM birthday_greetings_sent
-            WHERE tenant_id = ${tenant.id} AND year = ${currentYear}
-          )
+          ${alreadySentIds.length > 0 ? sql`AND id NOT IN (${sql.join(alreadySentIds.map((id) => sql`${id}`), sql`,`)})` : sql``}
       `);
 
       if (!birthdayPatients.rows.length) continue;
+      void inArray; // mantém helper no escopo para futuros usos
+      void notInArray;
 
       const defaultMessage = `Feliz aniversario, {nome}! 🎂🎉 A equipe da {clinica} deseja um dia maravilhoso para voce. Estamos aqui para cuidar do seu sorriso!`;
       const messageTemplate = settings.birthdayMessage || defaultMessage;
@@ -762,11 +771,10 @@ export async function processBirthdayGreetings() {
             throw sendErr;
           }
 
-          await db.execute(sql`
-            INSERT INTO birthday_greetings_sent (tenant_id, patient_id, year)
-            VALUES (${tenant.id}, ${patient.id}, ${currentYear})
-            ON CONFLICT (tenant_id, patient_id, year) DO NOTHING
-          `);
+          await db
+            .insert(birthdayGreetingsSentTable)
+            .values({ tenantId: tenant.id, patientId: patient.id, year: currentYear })
+            .onConflictDoNothing();
 
           await db.insert(dentalActivityTable).values({
             tenantId: tenant.id,

@@ -12,6 +12,7 @@ import {
   dentalMessagesTable,
   dentalActivityTable,
   appointmentFollowUpsTable,
+  birthdayGreetingsSentTable,
 } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { processFollowUps, processBirthdayGreetings, ensureBirthdayTable, processLeadRemarketingForTenant } from "../scheduler";
@@ -224,7 +225,7 @@ async function setup(): Promise<void> {
 async function cleanup(): Promise<void> {
   console.log("\n🧹 Cleaning up test data...\n");
   try {
-    await db.execute(sql`DELETE FROM birthday_greetings_sent WHERE tenant_id = ${tenantId}`).catch(() => {});
+    await db.delete(birthdayGreetingsSentTable).where(eq(birthdayGreetingsSentTable.tenantId, tenantId)).catch(() => {});
     await db.delete(appointmentFollowUpsTable).where(eq(appointmentFollowUpsTable.tenantId, tenantId));
     await db.delete(dentalActivityTable).where(eq(dentalActivityTable.tenantId, tenantId));
     await db.delete(dentalMessagesTable).where(eq(dentalMessagesTable.tenantId, tenantId));
@@ -1166,11 +1167,15 @@ async function test14_BirthdaySchedulerFlow(): Promise<void> {
     assert(!birthdayContent.includes("{nome}") && !birthdayContent.includes("{clinica}"), `Birthday message should not contain raw placeholders. Got: ${birthdayContent.substring(0, 200)}`);
     evidence("capturedMessage", { phone: capturedMsgs[0].phone, content: birthdayContent.substring(0, 300) });
 
-    const birthdaySentRows = await db.execute(sql`
-      SELECT * FROM birthday_greetings_sent
-      WHERE tenant_id = ${tenantId} AND patient_id = ${birthdayPatient.id} AND year = ${today.getFullYear()}
-    `);
-    assert(birthdaySentRows.rows.length === 1, `Should have exactly 1 birthday_greetings_sent row, got: ${birthdaySentRows.rows.length}`);
+    const birthdaySentRows = await db
+      .select()
+      .from(birthdayGreetingsSentTable)
+      .where(and(
+        eq(birthdayGreetingsSentTable.tenantId, tenantId),
+        eq(birthdayGreetingsSentTable.patientId, birthdayPatient.id),
+        eq(birthdayGreetingsSentTable.year, today.getFullYear()),
+      ));
+    assert(birthdaySentRows.length === 1, `Should have exactly 1 birthday_greetings_sent row, got: ${birthdaySentRows.length}`);
 
     const activity = await db.query.dentalActivityTable.findFirst({
       where: and(

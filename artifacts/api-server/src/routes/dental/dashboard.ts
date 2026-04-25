@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, patientsTable, dentalLeadsTable, dentalActivityTable, expensesTable } from "@workspace/db";
+import { appointmentsTable, patientsTable, dentalLeadsTable, dentalActivityTable, expensesTable, birthdayGreetingsSentTable } from "@workspace/db";
 import { eq, and, gte, lte, count, sql, desc } from "drizzle-orm";
 import { tenantMiddleware } from "../../middlewares/tenant";
 import { GetDashboardActivityQueryParams } from "@workspace/api-zod";
@@ -121,10 +121,10 @@ router.get("/", async (req, res) => {
 
   const birthdayRows = await safeQuery(
     () => db.execute<{ count: string }>(sql`
-      SELECT COUNT(*) AS count FROM birthday_greetings_sent
-      WHERE tenant_id = ${req.tenantId}
-        AND sent_at >= ${monthStart}
-        AND sent_at <= ${monthEnd}
+      SELECT COUNT(*) AS count FROM ${birthdayGreetingsSentTable}
+      WHERE ${birthdayGreetingsSentTable.tenantId} = ${req.tenantId}
+        AND ${birthdayGreetingsSentTable.sentAt} >= ${monthStart}
+        AND ${birthdayGreetingsSentTable.sentAt} <= ${monthEnd}
     `),
     { rows: [{ count: "0" }] } as unknown as Awaited<ReturnType<typeof db.execute<{ count: string }>>>,
     "birthdayRows"

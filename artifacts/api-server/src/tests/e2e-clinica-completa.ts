@@ -14,6 +14,7 @@ import {
   dentalActivityTable,
   appointmentFollowUpsTable,
   dentalConversationQuotasTable,
+  birthdayGreetingsSentTable,
 } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { processFollowUps } from "../scheduler";
@@ -510,7 +511,7 @@ async function setup(): Promise<void> {
 async function cleanup(): Promise<void> {
   console.log("\n🧹 Limpando dados de teste...\n");
   try {
-    await db.execute(sql`DELETE FROM birthday_greetings_sent WHERE tenant_id = ${tenantId}`).catch(() => {});
+    await db.delete(birthdayGreetingsSentTable).where(eq(birthdayGreetingsSentTable.tenantId, tenantId)).catch(() => {});
     await db.delete(appointmentFollowUpsTable).where(eq(appointmentFollowUpsTable.tenantId, tenantId));
     await db.delete(dentalActivityTable).where(eq(dentalActivityTable.tenantId, tenantId));
     await db.delete(dentalMessagesTable).where(eq(dentalMessagesTable.tenantId, tenantId));

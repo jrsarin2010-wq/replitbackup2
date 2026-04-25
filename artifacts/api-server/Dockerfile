@@ -1,21 +1,33 @@
 FROM node:20-alpine AS base
-RUN npm install -g pnpm@9
+RUN apk add --no-cache python3 make g++ \
+ && npm install -g pnpm@10.26.1
 
 FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY lib/db/package.json ./lib/db/
-COPY lib/api-spec/package.json ./lib/api-spec/
-COPY lib/integrations-openai-ai-server/package.json ./lib/integrations-openai-ai-server/
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY artifacts/api-server/package.json ./artifacts/api-server/
-RUN pnpm install --frozen-lockfile
+COPY lib/api-client-react/package.json ./lib/api-client-react/
+COPY lib/api-spec/package.json ./lib/api-spec/
+COPY lib/api-zod/package.json ./lib/api-zod/
+COPY lib/db/package.json ./lib/db/
+COPY lib/integrations-openai-ai-react/package.json ./lib/integrations-openai-ai-react/
+COPY lib/integrations-openai-ai-server/package.json ./lib/integrations-openai-ai-server/
+COPY scripts/package.json ./scripts/
+RUN pnpm install --frozen-lockfile \
+    --filter "@workspace/api-server..." \
+    --filter "@workspace/api-server^..."
 
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/lib ./lib
-COPY --from=deps /app/artifacts/api-server ./artifacts/api-server
-COPY . .
+COPY --from=deps /app ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc tsconfig.base.json tsconfig.json ./
+COPY lib ./lib
+COPY artifacts/api-server ./artifacts/api-server
+ENV DATABASE_URL="postgres://build:build@localhost:5432/build" \
+    AI_INTEGRATIONS_OPENAI_BASE_URL="https://placeholder.invalid" \
+    AI_INTEGRATIONS_OPENAI_API_KEY="placeholder" \
+    SESSION_SECRET="build-time-placeholder" \
+    JWT_SECRET="build-time-placeholder"
 RUN pnpm --filter @workspace/api-server run build
 
 FROM node:20-alpine AS runner
