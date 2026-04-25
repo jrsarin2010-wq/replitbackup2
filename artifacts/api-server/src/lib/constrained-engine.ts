@@ -483,6 +483,11 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   // ~13 chars / 4 chars-por-token ≈ 3 tokens economizados por slot exibido.
   const promptTokensSavedEstimate = slotsShown * 3;
 
+  // Task #4 — observabilidade da paginação de slots. `request_more_slots`
+  // expõe quando a IA sinalizou "paciente quer ver mais opções" no turno
+  // atual; `slot_offset_used` é o ponto de partida no array bruto que o
+  // turno consumiu (vindo do turno anterior); `slot_offset_next` é o que
+  // será gravado para o próximo turno (0 quando reset).
   logger.info(
     {
       tenantId: input.tenantId,
@@ -490,6 +495,10 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
       constrained_action: parsed.action,
       constrained_slot_ids: parsed.slot_ids,
       constrained_prof_id: parsed.professional_id,
+      request_more_slots: parsed.request_more_slots === true,
+      slot_offset_used: pagination.effectiveOffset,
+      slot_offset_next: nextOffset,
+      slot_offset_did_reset: pagination.didReset,
       slots_offered: slotsShown,
       slots_available_total: slotsAvailableTotal,
       slots_shown_vs_available: `${slotsShown}/${slotsAvailableTotal}`,
