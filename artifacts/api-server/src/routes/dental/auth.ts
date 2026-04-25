@@ -47,7 +47,7 @@ router.post("/register", async (req: Request, res: Response) => {
     }
 
     const emailLower = email.toLowerCase().trim();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(emailLower)) {
       res.status(400).json({ error: "Email inválido" });
       return;

@@ -47,7 +47,8 @@ router.post("/", async (req: Request, res: Response) => {
     }
 
     const meta = billing.metadata;
-    const tenantId = meta?.tenantId ? parseInt(meta.tenantId, 10) : null;
+    const _tenantIdParsed = meta?.tenantId ? parseInt(meta.tenantId, 10) : null;
+    const tenantId = _tenantIdParsed !== null && Number.isFinite(_tenantIdParsed) ? _tenantIdParsed : null;
     const paymentType = meta?.type;
 
     if (paymentType === "plan_upgrade") {
@@ -86,6 +87,7 @@ router.post("/", async (req: Request, res: Response) => {
       }
       const orderTenantId = existingUpgrade.tenantId;
 
+      let upgradeApplied = false;
       await db.transaction(async (tx) => {
         const [updatedOrder] = await tx
           .update(planUpgradeOrdersTable)
@@ -134,7 +136,13 @@ router.post("/", async (req: Request, res: Response) => {
         await tx.update(dentalConversationQuotasTable)
           .set({ monthlyConversationsUsed: 0, monthlyResetDate: now, alert80SentAt: null, alert100SentAt: null })
           .where(eq(dentalConversationQuotasTable.tenantId, orderTenantId));
+        upgradeApplied = true;
       });
+
+      if (!upgradeApplied) {
+        res.json({ ok: true, duplicate: true });
+        return;
+      }
 
       logger.info({ tenantId: orderTenantId, billingId: billing.id, targetPlan }, "Plan upgrade applied via payment");
       res.json({ ok: true });

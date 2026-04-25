@@ -103,13 +103,13 @@ if (missingObjectStorage.length > 0) {
 }
 
 const keyHex = process.env["DATA_ENCRYPTION_KEY"]!;
-const keyBuf = Buffer.from(keyHex, "hex");
-if (keyBuf.length !== 32) {
+if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) {
   throw new Error(
-    `DATA_ENCRYPTION_KEY is invalid: expected a 64-character hex string (32 bytes), got ${keyHex.length} characters (${keyBuf.length} bytes).\n` +
+    `DATA_ENCRYPTION_KEY is invalid: expected exactly a 64-character hex string (32 bytes), got "${keyHex.length}" characters.\n` +
     `Generate a valid key with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`,
   );
 }
+const keyBuf = Buffer.from(keyHex, "hex");
 
 const provider = (process.env.WHATSAPP_PROVIDER || "evolution").toLowerCase();
 const presentWhatsappVars = OPTIONAL_WHATSAPP_PROVIDER_ENV_VARS.filter((v) => !!process.env[v.key]).map((v) => v.key);

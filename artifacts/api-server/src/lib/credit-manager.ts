@@ -46,7 +46,8 @@ async function getOrCreateAndResetRecord(
         monthlyResetDate: new Date(),
       })
       .returning();
-    return created!;
+    if (!created) throw new Error(`Failed to create audio credits record for tenant ${tenantId}`);
+    return created;
   }
 
   if (isNewMonth(existing.monthlyResetDate)) {
@@ -55,8 +56,9 @@ async function getOrCreateAndResetRecord(
       .set({ monthlyCharsUsed: 0, monthlyResetDate: new Date() })
       .where(eq(dentalAudioCreditsTable.tenantId, tenantId))
       .returning();
+    if (!reset) throw new Error(`Failed to reset audio credits for tenant ${tenantId}`);
     logger.info({ tenantId }, "Monthly audio quota reset");
-    return reset!;
+    return reset;
   }
 
   return existing;

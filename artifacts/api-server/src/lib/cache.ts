@@ -60,7 +60,13 @@ export class TenantCache<T> {
       try {
         const val = await redis.get(`cache:${this.name}:${tenantId}`);
         if (val === null) return undefined;
-        return JSON.parse(val) as T;
+        try {
+          return JSON.parse(val) as T;
+        } catch {
+          logger.warn({ cache: this.name, tenantId }, "Redis cache: invalid JSON — evicting entry");
+          await redis.del(`cache:${this.name}:${tenantId}`).catch(() => {});
+          return undefined;
+        }
       } catch (err) {
         logger.warn({ err: (err as Error).message, cache: this.name }, "Redis GET failed — using local fallback");
       }

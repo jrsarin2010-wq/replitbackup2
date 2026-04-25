@@ -48,6 +48,18 @@ interface DedupHitEntry {
 }
 const dedupHitTracker = new Map<number, DedupHitEntry>();
 
+setInterval(() => {
+  const now = Date.now();
+  const windowMs = DEDUP_ALERT_WINDOW_SEC * 1000;
+  const cooldownMs = DEDUP_ALERT_COOLDOWN_SEC * 1000;
+  for (const [tenantId, entry] of dedupHitTracker) {
+    const hasRecentTimestamps = entry.timestamps.some(ts => now - ts <= windowMs);
+    if (!hasRecentTimestamps && now - entry.lastAlertAt >= cooldownMs) {
+      dedupHitTracker.delete(tenantId);
+    }
+  }
+}, 60_000);
+
 async function trackDedupFallbackAndMaybeAlert(tenantId: number, messageId: string): Promise<void> {
   const now = Date.now();
   const windowMs = DEDUP_ALERT_WINDOW_SEC * 1000;
@@ -651,7 +663,8 @@ router.post("/whatsapp", async (req, res) => {
   let messageId = "";
   let advisoryLockKey: number | null = null;
   try {
-    const webhookToken = req.headers["x-webhook-token"] || req.query.token;
+    const rawToken = req.headers["x-webhook-token"] || req.query.token;
+    const webhookToken = Array.isArray(rawToken) ? rawToken[0] : rawToken;
     const expectedToken = process.env.WEBHOOK_SECRET;
     if (expectedToken && webhookToken !== expectedToken) {
       logger.warn({ token: webhookToken ? "provided" : "missing" }, "Webhook: invalid or missing authentication token");
@@ -919,7 +932,8 @@ router.post("/whatsapp", async (req, res) => {
             picUrl = await provider.getProfilePicture(replyToJid, whatsappInstance);
           }
           if (!picUrl) return;
-          await db.update(dentalConversationsTable).set({ contactProfilePicUrl: picUrl }).where(eq(dentalConversationsTable.id, conversation!.id));
+          if (!conversation) return;
+          await db.update(dentalConversationsTable).set({ contactProfilePicUrl: picUrl }).where(eq(dentalConversationsTable.id, conversation.id));
           if (patient) {
             await db.update(patientsTable).set({ profilePicUrl: picUrl }).where(eq(patientsTable.id, patient.id));
           }

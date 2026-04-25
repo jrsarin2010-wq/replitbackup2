@@ -33,7 +33,8 @@ function validateStatus(raw: unknown): { ok: true; value?: LearningStatus } | { 
 
 router.get("/stats", async (req, res) => {
   try {
-    const stats = await getAiLearningStats(req.tenantId!);
+    const tenantId = req.tenantId!;
+    const stats = await getAiLearningStats(tenantId);
     res.json(stats);
   } catch (error) {
     console.error("Error fetching AI learning stats:", error);
@@ -45,10 +46,11 @@ router.get("/stats", async (req, res) => {
 
 router.get("/memories", async (req, res) => {
   try {
+    const tenantId = req.tenantId!;
     const sv = validateStatus(req.query.status);
     if (!sv.ok) return res.status(400).json({ error: "Invalid status" });
     const status = sv.value;
-    const conds = [eq(aiContactMemoryTable.tenantId, req.tenantId!)];
+    const conds = [eq(aiContactMemoryTable.tenantId, tenantId)];
     if (status) conds.push(eq(aiContactMemoryTable.status, status));
     const items = await db.query.aiContactMemoryTable.findMany({
       where: and(...conds),
@@ -64,6 +66,7 @@ router.get("/memories", async (req, res) => {
 
 router.patch("/memories/:id", async (req, res) => {
   try {
+    const tenantId = req.tenantId!;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
     const sv = validateStatus(req.body?.status);
@@ -80,7 +83,7 @@ router.patch("/memories/:id", async (req, res) => {
       .set(updates)
       .where(and(
         eq(aiContactMemoryTable.id, id),
-        eq(aiContactMemoryTable.tenantId, req.tenantId!),
+        eq(aiContactMemoryTable.tenantId, tenantId),
       ))
       .returning();
     if (!updated) return res.status(404).json({ error: "Not found" });
@@ -93,13 +96,14 @@ router.patch("/memories/:id", async (req, res) => {
 
 router.delete("/memories/:id", async (req, res) => {
   try {
+    const tenantId = req.tenantId!;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
     const result = await db
       .delete(aiContactMemoryTable)
       .where(and(
         eq(aiContactMemoryTable.id, id),
-        eq(aiContactMemoryTable.tenantId, req.tenantId!),
+        eq(aiContactMemoryTable.tenantId, tenantId),
       ))
       .returning({ id: aiContactMemoryTable.id });
     if (!result.length) return res.status(404).json({ error: "Not found" });
@@ -114,10 +118,11 @@ router.delete("/memories/:id", async (req, res) => {
 
 router.get("/objections", async (req, res) => {
   try {
+    const tenantId = req.tenantId!;
     const sv = validateStatus(req.query.status);
     if (!sv.ok) return res.status(400).json({ error: "Invalid status" });
     const status = sv.value;
-    const conds = [eq(aiObjectionPatternsTable.tenantId, req.tenantId!)];
+    const conds = [eq(aiObjectionPatternsTable.tenantId, tenantId)];
     if (status) conds.push(eq(aiObjectionPatternsTable.status, status));
     const items = await db.query.aiObjectionPatternsTable.findMany({
       where: and(...conds),
@@ -133,6 +138,7 @@ router.get("/objections", async (req, res) => {
 
 router.patch("/objections/:id", async (req, res) => {
   try {
+    const tenantId = req.tenantId!;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
     const sv = validateStatus(req.body?.status);
@@ -149,7 +155,7 @@ router.patch("/objections/:id", async (req, res) => {
       .set(updates)
       .where(and(
         eq(aiObjectionPatternsTable.id, id),
-        eq(aiObjectionPatternsTable.tenantId, req.tenantId!),
+        eq(aiObjectionPatternsTable.tenantId, tenantId),
       ))
       .returning();
     if (!updated) return res.status(404).json({ error: "Not found" });
@@ -162,13 +168,14 @@ router.patch("/objections/:id", async (req, res) => {
 
 router.delete("/objections/:id", async (req, res) => {
   try {
+    const tenantId = req.tenantId!;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
     const result = await db
       .delete(aiObjectionPatternsTable)
       .where(and(
         eq(aiObjectionPatternsTable.id, id),
-        eq(aiObjectionPatternsTable.tenantId, req.tenantId!),
+        eq(aiObjectionPatternsTable.tenantId, tenantId),
       ))
       .returning({ id: aiObjectionPatternsTable.id });
     if (!result.length) return res.status(404).json({ error: "Not found" });
@@ -183,10 +190,11 @@ router.delete("/objections/:id", async (req, res) => {
 
 router.get("/knowledge", async (req, res) => {
   try {
+    const tenantId = req.tenantId!;
     const sv = validateStatus(req.query.status);
     if (!sv.ok) return res.status(400).json({ error: "Invalid status" });
     const status = sv.value;
-    const conds = [eq(aiKnowledgeBaseTable.tenantId, req.tenantId!)];
+    const conds = [eq(aiKnowledgeBaseTable.tenantId, tenantId)];
     if (status) conds.push(eq(aiKnowledgeBaseTable.status, status));
     const items = await db.query.aiKnowledgeBaseTable.findMany({
       where: and(...conds),
@@ -202,6 +210,7 @@ router.get("/knowledge", async (req, res) => {
 
 router.patch("/knowledge/:id", async (req, res) => {
   try {
+    const tenantId = req.tenantId!;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
     const sv = validateStatus(req.body?.status);
@@ -218,7 +227,7 @@ router.patch("/knowledge/:id", async (req, res) => {
       .set(updates)
       .where(and(
         eq(aiKnowledgeBaseTable.id, id),
-        eq(aiKnowledgeBaseTable.tenantId, req.tenantId!),
+        eq(aiKnowledgeBaseTable.tenantId, tenantId),
       ))
       .returning();
     if (!updated) return res.status(404).json({ error: "Not found" });
@@ -231,13 +240,14 @@ router.patch("/knowledge/:id", async (req, res) => {
 
 router.delete("/knowledge/:id", async (req, res) => {
   try {
+    const tenantId = req.tenantId!;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
     const result = await db
       .delete(aiKnowledgeBaseTable)
       .where(and(
         eq(aiKnowledgeBaseTable.id, id),
-        eq(aiKnowledgeBaseTable.tenantId, req.tenantId!),
+        eq(aiKnowledgeBaseTable.tenantId, tenantId),
       ))
       .returning({ id: aiKnowledgeBaseTable.id });
     if (!result.length) return res.status(404).json({ error: "Not found" });
@@ -252,8 +262,9 @@ router.delete("/knowledge/:id", async (req, res) => {
 
 router.get("/strategies", async (req, res) => {
   try {
+    const tenantId = req.tenantId!;
     const rows = await db.query.aiStrategyAnalyticsTable.findMany({
-      where: eq(aiStrategyAnalyticsTable.tenantId, req.tenantId!),
+      where: eq(aiStrategyAnalyticsTable.tenantId, tenantId),
     });
     const map = new Map<string, { strategy: string; total: number; converted: number }>();
     for (const r of rows) {

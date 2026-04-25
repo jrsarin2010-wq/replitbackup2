@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -rn \"\\\\.returning\\(\\)\\\\|\\\\.returning$\" /home/runner/workspace/artifacts/api-server/src --include=\"*.ts\" -A 1)"
+    ]
+  }
+}
