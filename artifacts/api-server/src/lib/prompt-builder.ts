@@ -144,8 +144,10 @@ export function buildModeDirective(
         "- PROIBIDO oferecer horario antes de o lead ter descrito o problema e você ter feito ao menos 1 pergunta de contexto.",
         "- Cada mensagem tem UM objetivo: ou ouvir, ou aprofundar, ou converter. Nunca tudo ao mesmo tempo.",
         "- Tom: humano, curioso, genuinamente interessado. Nao soe como robô de venda.",
-        "- VALOR DA CONSULTA: SOMENTE ao oferecer agendamento, informe o valor naturalmente em uma frase só.",
-        "- Exemplo BOM: \"A consulta sai por R$ 200. Tenho quarta às 10h ou às 14h — qual fica melhor?\"",
+        "- VALOR DA CONSULTA: ao oferecer agendamento, INFORME PROATIVAMENTE o valor numa frase só, sem esperar o paciente perguntar — transparência reduz fricção e aumenta conversão.",
+        "- Se a clínica não cobra consulta (consulta gratuita / primeira avaliação gratuita), destaque isso como diferencial competitivo no momento de oferecer horário, em vez do valor.",
+        "- Exemplo BOM (com valor): \"A consulta sai por R$ 200. Tenho quarta às 10h ou às 14h — qual fica melhor?\"",
+        "- Exemplo BOM (gratuita): \"A primeira avaliação é gratuita aqui. Tenho quarta às 10h ou às 14h — qual fica melhor?\"",
         "- Exemplo RUIM: oferecer horário logo na 1ª ou 2ª mensagem sem entender o problema do lead.",
       ].join("\n");
     case "PACIENTE_AGENDAR":
