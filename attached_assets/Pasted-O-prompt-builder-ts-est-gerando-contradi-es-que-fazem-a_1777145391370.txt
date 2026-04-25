@@ -1,0 +1,36 @@
+O prompt-builder.ts está gerando contradições que fazem a IA alucinar — inclusive inventando solicitação de CPF e nome completo para verificar elegibilidade de plano, o que nunca foi configurado. A causa raiz é que o prompt tem muitas condicionais que se contradizem quando há múltiplos profissionais com configurações diferentes.
+Refatorar o buildSystemPrompt seguindo um princípio único: o servidor resolve TUDO, o prompt recebe apenas fatos simples e sem ambiguidade.
+Criar uma função resolvePromptContext() que calcula ANTES de montar qualquer texto:
+typescriptinterface ResolvedPromptContext {
+  // Modo já decidido — uma string clara, sem condicionais no prompt
+  modoTexto: string; 
+  // "Você está atendendo um lead particular — aplique SPIN selling" | 
+  // "Você está atendendo um contato de convênio — seja empático, sem venda" |
+  // "Você está atendendo um paciente recorrente da clínica"
+
+  // Profissional já filtrado e selecionado pelo servidor
+  profissionalSelecionado: Professional | null;
+
+  // Dados de consulta já calculados — valores diretos, sem condicionais
+  cobrarConsulta: boolean;
+  valorConsulta: string | null;
+  exigirPix: boolean;
+  chavePix: string | null;
+  bancoPix: string | null;
+
+  // Dias já calculados para ESTE profissional E ESTE modo
+  // (se convênio: insuranceDays; se particular: workingDays)
+  diasDisponiveis: string;
+  horarioInicio: string;
+  horarioFim: string;
+
+  // Flag única e definitiva — nunca ambígua
+  aceitaConvenio: boolean;
+
+  // Instruções SPIN ou empatia — já o texto pronto
+  instrucaoAbordagem: string;
+}
+O prompt montado a partir desse contexto deve ser texto limpo, direto, sem condicionais, sem "se X então Y senão Z". Cada campo é um fato, não uma regra.
+Remover completamente do prompt qualquer referência a CPF, RG, carteirinha ou verificação de elegibilidade — esses termos nunca devem aparecer.
+Remover do prompt referências a convênio/plano quando modoTexto for lead particular ou paciente da clínica.
+Manter todas as configurações do painel do dentista — elas estão corretas. Apenas mudar como são transformadas em prompt."
