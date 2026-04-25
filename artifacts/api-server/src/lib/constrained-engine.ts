@@ -38,6 +38,7 @@ import {
   type RenderContext,
 } from "./structured-renderer";
 import { validateConstrainedReply } from "./response-validator";
+import { persistConfirmSlotSignal } from "./constrained-facts";
 
 const PEAK_TIMEOUT_MS = 8_000;
 
@@ -76,6 +77,17 @@ export interface ConstrainedRunInput {
   model: string;
   /** Resumo curto do paciente, se houver. */
   patientContext?: string | null;
+  /**
+   * Bloco [FATOS] já formatado e sanitizado por `buildFactsBlock` (Task #1).
+   * null/undefined = nenhum fato disponível, não injeta no prompt.
+   */
+  factsBlock?: string | null;
+  /**
+   * Quantos slots foram efetivamente recebidos pelo schedule-engine ANTES do
+   * Top-K (Task #1). Usado para a métrica `slots_shown_vs_available`. Quando
+   * undefined, assume-se que `availableSlots.length` já é o total bruto.
+   */
+  totalAvailableSlots?: number;
 }
 
 export interface ConstrainedRunResult {
@@ -90,6 +102,12 @@ export interface ConstrainedRunResult {
   completionTokens: number;
   cachedTokens: number;
   violations: string[];
+  /** Métricas de observabilidade (Task #1). */
+  factsBlockPresent: boolean;
+  summaryBlockPresent: boolean;
+  slotsShown: number;
+  slotsAvailableTotal: number;
+  promptTokensSavedEstimate: number;
 }
 
 const ALLOWED_ACTIONS = new Set([
@@ -152,6 +170,7 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     insurancePlans: input.insurancePlans ?? null,
     todayLabel: input.todayLabel,
     recentHistory: input.recentHistoryText ?? null,
+    factsBlock: input.factsBlock ?? null,
   });
 
   const messages = [
@@ -240,6 +259,16 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
       procedure: null,
       professionalName: renderedRaw.chosenProfessional?.name ?? null,
     };
+    // Task #1 — persistir sinal de "agendou com X em Y" no ai_contact_memory
+    // para que o próximo turno tenha o fato no bloco [FATOS]. Fire-and-forget.
+    void persistConfirmSlotSignal({
+      tenantId: input.tenantId,
+      contactPhone: input.contactPhone,
+      conversationId: input.conversationId,
+      professionalName: renderedRaw.chosenProfessional?.name ?? null,
+      date: renderedRaw.chosenSlot.date,
+      time: renderedRaw.chosenSlot.time,
+    });
   }
 
   // 8. Validação fina (apenas termos proibidos) + ENFORCEMENT ─────────────
@@ -252,6 +281,16 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   // (mantém slot/marker/criação de agendamento — só protege o texto exibido).
   const rendered = applyViolationFallback(renderedRaw, violations.length > 0);
 
+  // Task #1 — métricas de observabilidade do contexto restrito.
+  const factsBlockPresent = !!(input.factsBlock && input.factsBlock.trim());
+  const summaryBlockPresent = !!(input.patientContext && input.patientContext.trim());
+  const slotsAvailableTotal = input.totalAvailableSlots ?? input.availableSlots.length;
+  const slotsShown = slotsWithIds.length;
+  // Heurística: cada slot no formato compacto (`s1|seg 27/04 14h|p1`) custa ~13
+  // chars a menos que o formato verboso anterior (`s1: Sex 27/04 14h00 — Dr. X`).
+  // ~13 chars / 4 chars-por-token ≈ 3 tokens economizados por slot exibido.
+  const promptTokensSavedEstimate = slotsShown * 3;
+
   logger.info(
     {
       tenantId: input.tenantId,
@@ -259,8 +298,13 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
       constrained_action: parsed.action,
       constrained_slot_ids: parsed.slot_ids,
       constrained_prof_id: parsed.professional_id,
-      slots_offered: slotsWithIds.length,
+      slots_offered: slotsShown,
+      slots_available_total: slotsAvailableTotal,
+      slots_shown_vs_available: `${slotsShown}/${slotsAvailableTotal}`,
       professionals_listed: profsWithIds.length,
+      facts_block_present: factsBlockPresent,
+      summary_block_present: summaryBlockPresent,
+      prompt_tokens_saved_estimate: promptTokensSavedEstimate,
       model_used: modelUsed,
       latency_ms: Date.now() - startTs,
       prompt_tokens: promptTokens,
@@ -281,5 +325,10 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     completionTokens,
     cachedTokens,
     violations: violations.map((v) => v.type),
+    factsBlockPresent,
+    summaryBlockPresent,
+    slotsShown,
+    slotsAvailableTotal,
+    promptTokensSavedEstimate,
   };
 }

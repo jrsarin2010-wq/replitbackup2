@@ -36,8 +36,10 @@ export type ConstrainedAction =
 export interface SlotWithId extends AvailableSlot {
   /** ID estável dentro do turno (s1, s2, …). */
   id: string;
-  /** Rótulo legível em pt-BR (ex.: "Sex 25/04 14h00 — Dr. Carlos"). */
+  /** Rótulo legível em pt-BR (ex.: "Sex 25/04 14h00 — Dr. Carlos"). Usado pelo render layer. */
   label: string;
+  /** Rótulo compacto p/ uso APENAS dentro do prompt (ex.: "sex 25/04 14h|p1"). */
+  compactLabel: string;
 }
 
 export interface ProfessionalWithId {
@@ -70,15 +72,22 @@ export interface StructuredAIResponse {
 export function assignSlotIds(
   slots: AvailableSlot[],
   professionals: Array<{ id: number; name: string }>,
-  limit = 12,
+  limit = 6,
 ): SlotWithId[] {
   const profById = new Map(professionals.map((p) => [p.id, p.name]));
+  // pId mapping (numeric profId → "pN") deve seguir a MESMA ordem que
+  // assignProfessionalIds usa, garantindo que compactLabel referencie o
+  // mesmo "pX" que o prompt apresenta no bloco [PROFISSIONAIS].
+  const pIdByProfId = new Map<number, string>();
+  professionals.forEach((p, i) => pIdByProfId.set(p.id, `p${i + 1}`));
   return slots.slice(0, limit).map((slot, i) => {
     const profName = slot.professionalId != null ? profById.get(slot.professionalId) : null;
+    const pIdShort = slot.professionalId != null ? pIdByProfId.get(slot.professionalId) ?? null : null;
     return {
       ...slot,
       id: `s${i + 1}`,
       label: formatSlotLabel(slot, profName),
+      compactLabel: formatSlotCompact(slot, pIdShort),
     };
   });
 }
@@ -175,6 +184,24 @@ export function formatSlotLabel(slot: AvailableSlot, profName: string | null | u
   const [hh, mi] = slot.time.split(":");
   const timeStr = mi === "00" ? `${hh}h` : `${hh}h${mi}`;
   return profName ? `${dow} ${dd}/${mm} ${timeStr} — ${profName}` : `${dow} ${dd}/${mm} ${timeStr}`;
+}
+
+const DAY_COMPACT = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"];
+
+/**
+ * Versão compacta usada APENAS dentro do prompt do LLM. Reduz tokens em ~30%
+ * por slot vs. `formatSlotLabel`. Formato: "seg 27/04 14h|p1" (ou "...|s/p" quando
+ * o slot não tem profissional). Não usar no texto enviado ao paciente.
+ */
+export function formatSlotCompact(slot: AvailableSlot, profIdShort: string | null | undefined): string {
+  const [y, m, d] = slot.date.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = DAY_COMPACT[dt.getUTCDay()];
+  const dd = String(d).padStart(2, "0");
+  const mm = String(m).padStart(2, "0");
+  const [hh, mi] = slot.time.split(":");
+  const timeStr = mi === "00" ? `${hh}h` : `${hh}h${mi}`;
+  return `${dow} ${dd}/${mm} ${timeStr}|${profIdShort ?? "s/p"}`;
 }
 
 /** Versão "humana" usada na resposta final do WhatsApp. */

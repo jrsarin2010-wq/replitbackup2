@@ -1241,12 +1241,18 @@ export async function processIncomingMessage(
   if (useConstrainedGeneration) {
     // ── Caminho RESTRITO (Task #25) ─────────────────────────────────────────
     const { runConstrainedGeneration } = await import("./constrained-engine");
+    const { buildFactsBlock } = await import("./constrained-facts");
     const settingsForConstrained = await getCachedSettings(tenantId).catch(() => null);
     const procsForConstrained = await getCachedProcedures(tenantId).catch(() => []);
     const localNow = new Date(Date.now() + utcOffsetHours * 3600000);
     const todayLabel = `${["Dom","Seg","Ter","Qua","Qui","Sex","Sab"][localNow.getUTCDay()]} ${String(localNow.getUTCDate()).padStart(2,"0")}/${String(localNow.getUTCMonth()+1).padStart(2,"0")}/${localNow.getUTCFullYear()}`;
+    // Task #1 — janela do histórico configurável via env (default 8 turnos),
+    // antes era 6 hardcoded. Permite ajuste sem deploy quando o resumo persistente
+    // estiver suprindo bem o contexto antigo.
+    const histTurnsRaw = Number(process.env.CONSTRAINED_HISTORY_TURNS);
+    const histTurns = Number.isFinite(histTurnsRaw) && histTurnsRaw >= 2 && histTurnsRaw <= 24 ? histTurnsRaw : 8;
     const recentHistoryText = history
-      .slice(-6)
+      .slice(-histTurns)
       .map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`)
       .join("\n");
     const constrainedProfessionals = (professionalsOverride ? routedProfessionals : tenantProfessionals).map((p) => ({
@@ -1261,6 +1267,14 @@ export async function processIncomingMessage(
       chargesConsultation: p.chargesConsultation ?? null,
       isOwner: p.isOwner ?? null,
     }));
+    // Task #1 — bloco [FATOS] determinístico construído ANTES da chamada à
+    // OpenAI. profIdShortByDbId mapeia profId numérico → "pX" usando a MESMA
+    // ordem que o engine usa para `assignProfessionalIds`, garantindo que o
+    // "prof preferido" referenciado em [FATOS] case com [PROFISSIONAIS].
+    const profIdShortByDbId = new Map(constrainedProfessionals.map((p, i) => [p.id, `p${i + 1}`]));
+    const facts = await buildFactsBlock(tenantId, contactPhone, profIdShortByDbId).catch(() => ({ text: null, factCount: 0 }));
+    // aiSummary já é carregado por `getOrCreateConversation` no início do fluxo.
+    const totalAvailableSlots = availabilityResult.availableSlots?.length ?? 0;
     try {
       const cr = await runConstrainedGeneration({
         client,
@@ -1274,6 +1288,7 @@ export async function processIncomingMessage(
         isInsuranceContact,
         isFirstContact,
         availableSlots: availabilityResult.availableSlots ?? [],
+        totalAvailableSlots,
         professionals: constrainedProfessionals,
         procedureNames: procsForConstrained.map((p) => p.name).filter(Boolean),
         insurancePlans: settingsForConstrained?.insurancePlans ?? null,
@@ -1289,6 +1304,9 @@ export async function processIncomingMessage(
         userContent,
         todayLabel,
         model: selectedModel,
+        // Task #1 — injeta resumo persistente da conversa como contexto de paciente.
+        patientContext: conversation?.aiSummary ?? null,
+        factsBlock: facts.text,
       });
       reply = cr.reply;
       inlineAppointment = cr.inlineAppointment;
