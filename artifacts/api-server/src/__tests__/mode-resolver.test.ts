@@ -7,6 +7,8 @@ const im = (over: Partial<InsuranceModeResult> = {}): InsuranceModeResult => ({
   isPrivate: false,
   triageComplete: false,
   triageNeeded: false,
+  insuranceExplicitInCurrent: false,
+  privateExplicitInCurrent: false,
   ...over,
 });
 
@@ -67,7 +69,7 @@ describe("resolveConversationMode (Task #17 — golden suite)", () => {
       expected: "CONVENIO_AGENDAR",
     },
     {
-      name: "lead + ambos isInsurance e isPrivate (conflito) → CONVENIO_AGENDAR (insurance ganha)",
+      name: "lead + ambos isInsurance e isPrivate (conflito sem flags explícitas) → CONVENIO_AGENDAR (insurance ganha)",
       input: { contactType: "lead", clinicAcceptsInsurance: true, insuranceMode: im({ isInsurance: true, isPrivate: true, triageComplete: true }) },
       expected: "CONVENIO_AGENDAR",
     },
@@ -75,6 +77,71 @@ describe("resolveConversationMode (Task #17 — golden suite)", () => {
       name: "paciente + isPrivate declarado → PACIENTE_AGENDAR",
       input: { contactType: "patient", clinicAcceptsInsurance: true, insuranceMode: im({ isPrivate: true, triageComplete: true }) },
       expected: "PACIENTE_AGENDAR",
+    },
+    // ── Cenário do bug: lead pergunta "atende convênios?" turno 1 → diz
+    // "sou particular" turno 2. Sem o override, history dispara isInsurance=true
+    // e o lead trava em CONVENIO_AGENDAR. Com o override, declaração ATUAL de
+    // particular sobrescreve evidência histórica de convênio → PARTICULAR_SPIN.
+    {
+      name: "lead + history insurance + current declarou particular → PARTICULAR_SPIN (override)",
+      input: {
+        contactType: "lead",
+        clinicAcceptsInsurance: true,
+        insuranceMode: im({
+          isInsurance: true,
+          isPrivate: true,
+          triageComplete: true,
+          privateExplicitInCurrent: true,
+          insuranceExplicitInCurrent: false,
+        }),
+      },
+      expected: "PARTICULAR_SPIN",
+    },
+    {
+      name: "lead + ambos explícitos no current (mensagem ambígua) → CONVENIO_AGENDAR (insurance ganha, sem override)",
+      input: {
+        contactType: "lead",
+        clinicAcceptsInsurance: true,
+        insuranceMode: im({
+          isInsurance: true,
+          isPrivate: true,
+          triageComplete: true,
+          insuranceExplicitInCurrent: true,
+          privateExplicitInCurrent: true,
+        }),
+      },
+      expected: "CONVENIO_AGENDAR",
+    },
+    {
+      name: "paciente + history insurance + current particular → CONVENIO_AGENDAR (override é só para não-paciente)",
+      input: {
+        contactType: "patient",
+        clinicAcceptsInsurance: true,
+        insuranceMode: im({
+          isInsurance: true,
+          isPrivate: true,
+          triageComplete: true,
+          privateExplicitInCurrent: true,
+        }),
+      },
+      expected: "CONVENIO_AGENDAR",
+    },
+    // ── Persisted=insurance + current declarou particular → override
+    // (paciente foi marcado convênio por engano em turno anterior, agora corrige).
+    {
+      name: "lead + persisted insurance forte + current declarou particular → PARTICULAR_SPIN (override também sobrescreve persisted)",
+      input: {
+        contactType: "lead",
+        clinicAcceptsInsurance: true,
+        insuranceMode: im({
+          isInsurance: true,
+          isPrivate: true,
+          triageComplete: true,
+          privateExplicitInCurrent: true,
+          insuranceExplicitInCurrent: false,
+        }),
+      },
+      expected: "PARTICULAR_SPIN",
     },
   ];
 

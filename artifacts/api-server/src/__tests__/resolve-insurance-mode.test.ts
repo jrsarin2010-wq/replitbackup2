@@ -113,17 +113,38 @@ const BASE = {
 describe("resolveInsuranceMode — clínica NÃO aceita convênio", () => {
   it("retorna todos false quando clinicAcceptsInsurance=false, mesmo com currentMessage de convênio", () => {
     const r = resolveInsuranceMode({ ...BASE, clinicAcceptsInsurance: false, currentMessage: "tenho plano" });
-    expect(r).toEqual({ isInsurance: false, isPrivate: false, triageComplete: false, triageNeeded: false });
+    expect(r).toEqual({
+      isInsurance: false,
+      isPrivate: false,
+      triageComplete: false,
+      triageNeeded: false,
+      insuranceExplicitInCurrent: false,
+      privateExplicitInCurrent: false,
+    });
   });
 
   it("retorna todos false quando clinicAcceptsInsurance=false, mesmo com persistedPaymentType=insurance", () => {
     const r = resolveInsuranceMode({ ...BASE, clinicAcceptsInsurance: false, persistedPaymentType: "insurance" });
-    expect(r).toEqual({ isInsurance: false, isPrivate: false, triageComplete: false, triageNeeded: false });
+    expect(r).toEqual({
+      isInsurance: false,
+      isPrivate: false,
+      triageComplete: false,
+      triageNeeded: false,
+      insuranceExplicitInCurrent: false,
+      privateExplicitInCurrent: false,
+    });
   });
 
   it("retorna todos false quando clinicAcceptsInsurance=false, mesmo com persistedPaymentType=private", () => {
     const r = resolveInsuranceMode({ ...BASE, clinicAcceptsInsurance: false, persistedPaymentType: "private" });
-    expect(r).toEqual({ isInsurance: false, isPrivate: false, triageComplete: false, triageNeeded: false });
+    expect(r).toEqual({
+      isInsurance: false,
+      isPrivate: false,
+      triageComplete: false,
+      triageNeeded: false,
+      insuranceExplicitInCurrent: false,
+      privateExplicitInCurrent: false,
+    });
   });
 
   it("retorna todos false quando clinicAcceptsInsurance=false, mesmo com histórico de convênio", () => {
@@ -132,7 +153,14 @@ describe("resolveInsuranceMode — clínica NÃO aceita convênio", () => {
       clinicAcceptsInsurance: false,
       historyMessages: [{ content: "quero usar meu plano" }],
     });
-    expect(r).toEqual({ isInsurance: false, isPrivate: false, triageComplete: false, triageNeeded: false });
+    expect(r).toEqual({
+      isInsurance: false,
+      isPrivate: false,
+      triageComplete: false,
+      triageNeeded: false,
+      insuranceExplicitInCurrent: false,
+      privateExplicitInCurrent: false,
+    });
   });
 });
 

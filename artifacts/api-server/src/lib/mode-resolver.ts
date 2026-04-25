@@ -35,6 +35,27 @@ export interface ModeResolverResult {
 export function resolveConversationMode(input: ModeResolverInput): ModeResolverResult {
   const { contactType, clinicAcceptsInsurance, insuranceMode } = input;
 
+  // Override de conflito: se o lead acabou de declarar EXPLICITAMENTE particular
+  // na mensagem atual e a evidência de convênio vem APENAS de fonte fraca
+  // (histórico OU paymentType persistido em turno anterior, sem declaração
+  // explícita de convênio na mensagem atual), respeitar a declaração atual.
+  // Casos cobertos:
+  //   - lead pergunta "atende convênios?" turno 1 → diz "sou particular" turno 2
+  //     (history dispara isInsurance, current declara particular)
+  //   - paymentType persistido como "insurance" por engano em turno anterior →
+  //     paciente corrige dizendo "sou particular" agora
+  // Sem este guard, o branch CONVENIO_AGENDAR abaixo trava o lead particular
+  // no fluxo errado e perde a conversão.
+  // Pacientes recorrentes (contactType=patient) seguem o caminho normal abaixo
+  // pois a triagem deles tem semântica diferente (família + recorrência > SPIN).
+  if (
+    contactType !== "patient" &&
+    insuranceMode.privateExplicitInCurrent &&
+    !insuranceMode.insuranceExplicitInCurrent
+  ) {
+    return { mode: "PARTICULAR_SPIN", reason: "private_overrides_weak_insurance" };
+  }
+
   // Convênio confirmado: isInsurance E triageComplete para evitar que uma
   // detecção parcial (suspeita via padrão sem confirmação explícita) pule
   // a triagem e entre direto no modo de agendamento convênio.

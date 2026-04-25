@@ -210,6 +210,18 @@ export interface InsuranceModeResult {
   triageComplete: boolean;
   /** Clinic accepts insurance AND triage has NOT been answered yet. */
   triageNeeded: boolean;
+  /**
+   * True only when isInsurance comes from the CURRENT message (strong signal),
+   * not from history or persisted state (weak signals). Used by mode-resolver
+   * to break ties when current message contradicts history.
+   */
+  insuranceExplicitInCurrent: boolean;
+  /**
+   * True only when isPrivate comes from the CURRENT message (strong signal),
+   * not from history or persisted state (weak signals). Used by mode-resolver
+   * to break ties when current message contradicts history.
+   */
+  privateExplicitInCurrent: boolean;
 }
 
 /**
@@ -226,7 +238,14 @@ export function resolveInsuranceMode(params: InsuranceModeParams): InsuranceMode
   const { clinicAcceptsInsurance, persistedPaymentType, currentMessage, historyMessages } = params;
 
   if (!clinicAcceptsInsurance) {
-    return { isInsurance: false, isPrivate: false, triageComplete: false, triageNeeded: false };
+    return {
+      isInsurance: false,
+      isPrivate: false,
+      triageComplete: false,
+      triageNeeded: false,
+      insuranceExplicitInCurrent: false,
+      privateExplicitInCurrent: false,
+    };
   }
 
   // Also accept bare-answer messages ("particular" alone, "plano" alone, etc.)
@@ -243,22 +262,35 @@ export function resolveInsuranceMode(params: InsuranceModeParams): InsuranceMode
     (m) => PRIVATE_DECLARED_PATTERN.test(m.content) || isBareParticularAnswer(m.content),
   );
 
+  // STRONG signals — declaration in the CURRENT message. Used by mode-resolver
+  // to break ties when current contradicts history (lead asks "atende
+  // convênios?" then declares "sou particular" → must land in PARTICULAR_SPIN).
+  const insuranceExplicitInCurrent =
+    detectsInsuranceDeclaration(currentMessage) || isBareInsuranceAnswer(currentMessage);
+  const privateExplicitInCurrent =
+    PRIVATE_DECLARED_PATTERN.test(currentMessage) || isBareParticularAnswer(currentMessage);
+
   const isInsurance =
     persistedPaymentType === "insurance" ||
-    detectsInsuranceDeclaration(currentMessage) ||
-    isBareInsuranceAnswer(currentMessage) ||
+    insuranceExplicitInCurrent ||
     insuranceMentionedInHistory;
 
   const isPrivate =
     persistedPaymentType === "private" ||
-    PRIVATE_DECLARED_PATTERN.test(currentMessage) ||
-    isBareParticularAnswer(currentMessage) ||
+    privateExplicitInCurrent ||
     privateMentionedInHistory;
 
   const triageComplete = isInsurance || isPrivate;
   const triageNeeded = !triageComplete;
 
-  return { isInsurance, isPrivate, triageComplete, triageNeeded };
+  return {
+    isInsurance,
+    isPrivate,
+    triageComplete,
+    triageNeeded,
+    insuranceExplicitInCurrent,
+    privateExplicitInCurrent,
+  };
 }
 
 // ── shouldSuppressAgendaForTriage ────────────────────────────────────────────
