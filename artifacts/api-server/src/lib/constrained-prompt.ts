@@ -56,8 +56,17 @@ export interface ConstrainedPromptContext {
   patientContext?: string | null;
   /** Lista de slots já com ID (ordenados, máx ~8). */
   slots: SlotWithId[];
-  /** Lista de profissionais já com ID. */
-  professionals: ProfessionalWithId[];
+  /**
+   * Lista de profissionais já com ID. Aceita campos opcionais de convênio
+   * por profissional (acceptsInsurance + insurancePlans) — quando presentes,
+   * o bloco [PROFISSIONAIS] mostra o status individual ("atende: Bradesco"
+   * ou "particular apenas"). Bug fix do caso "prof particular ofertado a
+   * paciente de convênio".
+   */
+  professionals: Array<ProfessionalWithId & {
+    acceptsInsurance?: boolean | null;
+    insurancePlans?: string | null;
+  }>;
   /** Procedimentos cadastrados (nomes). */
   procedureNames: string[];
   /** Convênios aceitos (string formatada). */
@@ -85,14 +94,41 @@ export function buildConstrainedPrompt(ctx: ConstrainedPromptContext): string {
 
   // Compactação extra: usa só o primeiro nome quando o profissional tem
   // sobrenome longo. O renderer ainda recebe o nome completo via PROS full.
+  // Bug fix — anexa status de convênio quando relevante para evitar que o
+  // LLM ofereça profissional particular para paciente de convênio (ou
+  // vice-versa). Formato: "p1|Dr Carlos|conv:Bradesco,Amil" /
+  // "p2|Dra Ana|particular".
   const profsBlock =
     ctx.professionals.length > 0
-      ? ctx.professionals.map((p) => `  ${p.id}|${p.name.split(/\s+/).slice(0, 2).join(" ")}`).join("\n")
+      ? ctx.professionals.map((p) => {
+          const shortName = p.name.split(/\s+/).slice(0, 2).join(" ");
+          let insTag = "";
+          if (p.acceptsInsurance === true) {
+            const plans = (p.insurancePlans ?? "").trim();
+            insTag = plans ? `|conv:${plans.substring(0, 40)}` : "|conv";
+          } else if (p.acceptsInsurance === false) {
+            insTag = "|particular";
+          }
+          return `  ${p.id}|${shortName}${insTag}`;
+        }).join("\n")
       : "  (nao aplicavel)";
 
   const modeLine = ctx.mode ? `\nMODO: ${ctx.mode}` : "";
+  // Bug fix — quando o paciente é de convênio, listar quais profs aceitam
+  // (ou avisar que nenhum aceita). Reforço explícito porque IA tendia a
+  // ignorar o tag "|particular" no bloco [PROFISSIONAIS].
+  const insuranceProfs = ctx.professionals.filter((p) => p.acceptsInsurance === true);
+  const noInsuranceProfs = ctx.professionals.filter((p) => p.acceptsInsurance === false);
   const insuranceLine = ctx.isInsuranceContact
-    ? "\nCONTATO DE CONVENIO: NUNCA escolha SEND_PIX nem SEND_FEE. Convenio nao paga antes."
+    ? `\nCONTATO DE CONVENIO: NUNCA escolha SEND_PIX nem SEND_FEE. Convenio nao paga antes.${
+        insuranceProfs.length > 0
+          ? ` Profissionais que ATENDEM convenio: ${insuranceProfs.map((p) => p.id).join(", ")}.`
+          : " NENHUM profissional cadastrado atende convenio — use ASK_INFO para confirmar plano ou ESCALATE."
+      }${
+        noInsuranceProfs.length > 0
+          ? ` PROFISSIONAIS PROIBIDOS para esse paciente (so atendem particular): ${noInsuranceProfs.map((p) => p.id).join(", ")} — NUNCA inclua em professional_id nem ofereca slots deles.`
+          : ""
+      }`
     : "";
   const firstContactLine = ctx.isFirstContact
     ? "\nPRIMEIRO CONTATO: prefira ASK_INFO/JUST_REPLY com apresentacao breve. NAO oferte horarios na 1a mensagem."

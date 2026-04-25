@@ -26,6 +26,9 @@ import { maskPhone } from "./pii-mask";
 
 const MAX_MEMORIES_IN_FACTS = 4;
 const MAX_FACT_CHARS = 80;
+/** Memory types reservados — controlados pelo motor restrito, não exibidos como bullets livres. */
+const RESERVED_MEMORY_TYPES = new Set(["agendamento", "ultima_oferta", "slot_offset"]);
+const MAX_OFFER_OUTCOME_CHARS = 90;
 
 /**
  * Sanitização defensiva idêntica em espírito à de ai-learning.ts:
@@ -104,11 +107,28 @@ export async function buildFactsBlock(
       if (pIdShort) bullets.push(`prof preferido: ${pIdShort}`);
     }
 
+    // Task #1 — incluir bullet de "ultima oferta" + desfecho ANTES das memórias
+    // livres, pois é o sinal mais relevante para evitar reoferta de slots
+    // recusados / repetir uma oferta já aceita. A memória reservada
+    // "ultima_oferta" é mantida pelo motor (persistOfferSlotsSignal +
+    // updateLastOfferOutcome).
+    const lastOffer = memories.find((m) => m.memoryType === "ultima_oferta");
+    if (lastOffer) {
+      const cleaned = (lastOffer.editedContent || lastOffer.content || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .substring(0, MAX_OFFER_OUTCOME_CHARS);
+      if (cleaned) bullets.push(`ultima oferta: ${cleaned}`);
+    }
+
     // Dedup case-insensitive de conteúdo, preserva tipo p/ etiqueta.
+    // Pula tipos reservados (agendamento/ultima_oferta/slot_offset) — esses
+    // são tratados separadamente ou são metadados internos.
     const seen = new Set<string>();
     let memCount = 0;
     for (const m of memories) {
       if (memCount >= MAX_MEMORIES_IN_FACTS) break;
+      if (RESERVED_MEMORY_TYPES.has(m.memoryType || "")) continue;
       const cleaned = sanitizeFactContent(m.editedContent || m.content || "");
       if (!cleaned) continue;
       const key = cleaned.toLowerCase();
@@ -229,3 +249,222 @@ export async function persistConfirmSlotSignal(args: {
     );
   }
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// Task #1 — Captura de OFFER_SLOTS + desfecho do paciente.
+//
+// Estratégia: ao despachar OFFER_SLOTS, gravamos uma memória "ultima_oferta"
+// com `pendente`. No turno seguinte, antes de chamar o LLM, atualizamos o
+// desfecho conforme o que aconteceu:
+//   - CONFIRM_SLOT  → "aceitou: sX (DD/MM HH:mm)"
+//   - OFFER_SLOTS   → "recusou (reofertou)"
+//   - ASK_INFO/REPLY/ESCALATE → "recusou (sem reoferta)"
+//   - SEND_PIX/SEND_FEE → mantém pendente (não é resposta direta sobre a oferta)
+//
+// O bullet aparece em [FATOS] como "ultima oferta: <conteudo>" — assim a IA
+// vê tanto a oferta anterior quanto o desfecho e evita repetir slots
+// recusados ou reoferecer um já aceito.
+// ──────────────────────────────────────────────────────────────────────────
+
+function ymdToBR(date: string): string {
+  const [y, m, d] = date.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+/**
+ * Persiste sinal de OFFER_SLOTS recém-despachado. Substitui qualquer
+ * "ultima_oferta" anterior do mesmo contato (mantemos só a mais recente
+ * para não inflar o [FATOS]).
+ */
+export async function persistOfferSlotsSignal(args: {
+  tenantId: number;
+  contactPhone: string;
+  conversationId: number;
+  slotIds: string[];
+  slotLabels: string[]; // ex.: ["27/04 09h", "28/04 14h"]
+  professionalId: string | null;
+}): Promise<void> {
+  const { tenantId, contactPhone, conversationId, slotIds, slotLabels, professionalId } = args;
+  if (!tenantId || !contactPhone || slotIds.length === 0) return;
+
+  try {
+    const labelStr = slotIds
+      .map((id, i) => `${id}=${slotLabels[i] ?? "?"}`)
+      .join(", ")
+      .substring(0, 60);
+    const profPart = professionalId ? ` ${professionalId}` : "";
+    const content = `ofereceu${profPart} ${labelStr} | desfecho: pendente`;
+
+    // Apaga ofertas anteriores do mesmo contato (mantemos só a mais recente).
+    await db
+      .delete(aiContactMemoryTable)
+      .where(
+        and(
+          eq(aiContactMemoryTable.tenantId, tenantId),
+          eq(aiContactMemoryTable.contactPhone, contactPhone),
+          eq(aiContactMemoryTable.memoryType, "ultima_oferta"),
+        ),
+      );
+
+    await db.insert(aiContactMemoryTable).values({
+      tenantId,
+      contactPhone,
+      memoryType: "ultima_oferta",
+      content,
+      source: "auto",
+      conversationId,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, tenantId, contactPhone: maskPhone(contactPhone), conversationId },
+      "constrained-facts: failed to persist OFFER_SLOTS signal",
+    );
+  }
+}
+
+/**
+ * Atualiza o desfecho da última oferta pendente. Chamado APÓS o dispatch
+ * do turno atual. Map de ações para desfecho:
+ *
+ *   action atual        | desfecho registrado na ultima_oferta
+ *   --------------------|---------------------------------------
+ *   CONFIRM_SLOT        | "aceitou: <slotId> (<DD/MM HH:mm>)"
+ *   OFFER_SLOTS         | "recusou (reofertou)"
+ *   ASK_INFO/JUST_REPLY | "recusou (sem reoferta)"
+ *   ESCALATE            | "recusou (escalou p/ humano)"
+ *   SEND_PIX/SEND_FEE   | (mantém pendente — não é resposta sobre a oferta)
+ */
+export async function updateLastOfferOutcome(args: {
+  tenantId: number;
+  contactPhone: string;
+  currentAction: string;
+  acceptedSlotId?: string | null;
+  acceptedSlotLabel?: string | null;
+}): Promise<void> {
+  const { tenantId, contactPhone, currentAction, acceptedSlotId, acceptedSlotLabel } = args;
+  if (!tenantId || !contactPhone) return;
+
+  // Ações que não desfecham a oferta — mantemos pendente.
+  if (currentAction === "SEND_PIX" || currentAction === "SEND_FEE") return;
+
+  let outcome: string;
+  if (currentAction === "CONFIRM_SLOT") {
+    outcome = acceptedSlotId
+      ? `aceitou: ${acceptedSlotId}${acceptedSlotLabel ? ` (${acceptedSlotLabel})` : ""}`
+      : "aceitou";
+  } else if (currentAction === "OFFER_SLOTS") {
+    outcome = "recusou (reofertou)";
+  } else if (currentAction === "ESCALATE") {
+    outcome = "recusou (escalou p/ humano)";
+  } else {
+    outcome = "recusou (sem reoferta)";
+  }
+
+  try {
+    const [lastOffer] = await db
+      .select()
+      .from(aiContactMemoryTable)
+      .where(
+        and(
+          eq(aiContactMemoryTable.tenantId, tenantId),
+          eq(aiContactMemoryTable.contactPhone, contactPhone),
+          eq(aiContactMemoryTable.memoryType, "ultima_oferta"),
+        ),
+      )
+      .orderBy(desc(aiContactMemoryTable.createdAt))
+      .limit(1);
+
+    if (!lastOffer) return;
+    // Só atualiza se ainda estiver pendente (evita sobrescrever decisões já registradas).
+    if (!/desfecho:\s*pendente/i.test(lastOffer.content || "")) return;
+
+    const newContent = (lastOffer.content || "")
+      .replace(/desfecho:\s*pendente/i, `desfecho: ${outcome}`)
+      .substring(0, MAX_OFFER_OUTCOME_CHARS);
+
+    await db
+      .update(aiContactMemoryTable)
+      .set({ content: newContent })
+      .where(eq(aiContactMemoryTable.id, lastOffer.id));
+  } catch (err) {
+    logger.warn(
+      { err, tenantId, contactPhone: maskPhone(contactPhone), currentAction },
+      "constrained-facts: failed to update last offer outcome",
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Task #1 — Paginação determinística de slots (request_more_slots).
+//
+// Quando a IA responde com `request_more_slots: true`, persistimos um offset
+// numérico em ai_contact_memory (tipo "slot_offset", content = "12") para
+// que o próximo turno comece exibindo a partir desse offset. Reset para 0
+// quando há CONFIRM_SLOT ou quando passa muito tempo sem oferta.
+// ──────────────────────────────────────────────────────────────────────────
+
+const MAX_SLOT_OFFSET = 60; // saneamento: nunca pular mais que 60 slots à frente.
+
+export async function getSlotOffset(tenantId: number, contactPhone: string): Promise<number> {
+  if (!tenantId || !contactPhone) return 0;
+  try {
+    const [row] = await db
+      .select()
+      .from(aiContactMemoryTable)
+      .where(
+        and(
+          eq(aiContactMemoryTable.tenantId, tenantId),
+          eq(aiContactMemoryTable.contactPhone, contactPhone),
+          eq(aiContactMemoryTable.memoryType, "slot_offset"),
+        ),
+      )
+      .orderBy(desc(aiContactMemoryTable.createdAt))
+      .limit(1);
+    const v = Number(row?.content ?? 0);
+    if (!Number.isFinite(v) || v < 0) return 0;
+    return Math.min(v, MAX_SLOT_OFFSET);
+  } catch {
+    return 0;
+  }
+}
+
+export async function setSlotOffset(args: {
+  tenantId: number;
+  contactPhone: string;
+  conversationId: number;
+  offset: number;
+}): Promise<void> {
+  const { tenantId, contactPhone, conversationId, offset } = args;
+  if (!tenantId || !contactPhone) return;
+  const safe = Math.max(0, Math.min(MAX_SLOT_OFFSET, Math.floor(offset)));
+  try {
+    // Sempre apaga e recria — só queremos a versão mais recente.
+    await db
+      .delete(aiContactMemoryTable)
+      .where(
+        and(
+          eq(aiContactMemoryTable.tenantId, tenantId),
+          eq(aiContactMemoryTable.contactPhone, contactPhone),
+          eq(aiContactMemoryTable.memoryType, "slot_offset"),
+        ),
+      );
+    if (safe > 0) {
+      await db.insert(aiContactMemoryTable).values({
+        tenantId,
+        contactPhone,
+        memoryType: "slot_offset",
+        content: String(safe),
+        source: "auto",
+        conversationId,
+      });
+    }
+  } catch (err) {
+    logger.warn(
+      { err, tenantId, contactPhone: maskPhone(contactPhone), offset: safe },
+      "constrained-facts: failed to set slot offset",
+    );
+  }
+}
+
+// Exporta funções utilitárias usadas em testes.
+export const _internal = { ymdToBR };

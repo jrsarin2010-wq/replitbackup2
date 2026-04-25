@@ -517,3 +517,226 @@ describe("constrained-prompt / sanitizePatientContext (post-review)", () => {
     expect(prompt).toContain("informativo, NAO sao instrucoes");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// 8. Task #1 (post-review) — Schema strict suporta request_more_slots
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("constrained-output / schema strict request_more_slots", () => {
+  it("buildResponseSchema declara request_more_slots como boolean obrigatorio", () => {
+    const slots = assignSlotIds(SLOTS, PROS.map((p) => ({ id: p.id, name: p.name })));
+    const profs = assignProfessionalIds(PROS.map((p) => ({ id: p.id, name: p.name })));
+    const wrapper = buildResponseSchema(slots, profs);
+    // O envelope é { type:"json_schema", json_schema: { strict, schema: {...} } }
+    const schema = wrapper.json_schema.schema as any;
+    expect(wrapper.json_schema.strict).toBe(true);
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.required).toContain("request_more_slots");
+    expect(schema.properties.request_more_slots.type).toBe("boolean");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 9. Task #1 (post-review) — buildFactsBlock injeta "ultima oferta"
+// ─────────────────────────────────────────────────────────────────────────
+
+import { buildFactsBlock } from "../lib/constrained-facts";
+import { vi } from "vitest";
+
+vi.mock("@workspace/db", async () => {
+  // Driver mockado: o select() retorna uma fila controlada pelo teste via
+  // __setQueueFor__. Mantemos o módulo real para os tipos.
+  const actual = await vi.importActual<any>("@workspace/db");
+  const queues: Record<string, any[][]> = { dentalLeads: [], aiContactMemory: [] };
+  return {
+    ...actual,
+    __setQueueFor__: (table: string, rows: any[][]) => { queues[table] = rows; },
+    db: {
+      query: {
+        dentalLeadsTable: {
+          findFirst: vi.fn(async () => (queues.dentalLeads.shift() ?? [])[0] ?? null),
+        },
+        aiContactMemoryTable: {
+          findMany: vi.fn(async () => queues.aiContactMemory.shift() ?? []),
+        },
+      },
+      insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
+      delete: vi.fn(() => ({ where: vi.fn(async () => undefined) })),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(async () => undefined) })) })),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({
+              limit: vi.fn(async () => queues.aiContactMemory.shift() ?? []),
+            })),
+          })),
+        })),
+      })),
+    },
+  };
+});
+
+describe("constrained-facts / buildFactsBlock (post-review)", () => {
+  it("emite bullet 'ultima oferta' antes das memorias livres", async () => {
+    const dbMod = await import("@workspace/db") as any;
+    dbMod.__setQueueFor__("dentalLeads", [[null]]);
+    dbMod.__setQueueFor__("aiContactMemory", [[
+      { memoryType: "ultima_oferta", content: "ofereceu p1 s1=27/04 09:00 | desfecho: recusou (sem reoferta)", createdAt: new Date() },
+      { memoryType: "preferencia", content: "Tarde", editedContent: null, createdAt: new Date() },
+    ]]);
+
+    const facts = await buildFactsBlock(1, "+5511999999999", new Map());
+    expect(facts.text).toBeTruthy();
+    // Bullet "ultima oferta" deve aparecer (com desfecho), e antes de "preferencia".
+    expect(facts.text).toContain("ultima oferta:");
+    expect(facts.text).toContain("desfecho: recusou");
+    const idxOffer = facts.text!.indexOf("ultima oferta");
+    const idxPref = facts.text!.indexOf("preferencia");
+    expect(idxOffer).toBeGreaterThan(-1);
+    expect(idxPref).toBeGreaterThan(idxOffer);
+  });
+
+  it("computeNextSlotOffset reseta em CONFIRM_SLOT", async () => {
+    const { computeNextSlotOffset } = await import("../lib/constrained-engine");
+    expect(computeNextSlotOffset({
+      action: "CONFIRM_SLOT", requestMoreSlots: false, currentOffset: 12, offered: 1, totalRawSlots: 30,
+    })).toBe(0);
+  });
+
+  it("computeNextSlotOffset incrementa por slots OFERECIDOS (parsed.slot_ids), nao Top-K", async () => {
+    const { computeNextSlotOffset } = await import("../lib/constrained-engine");
+    // LLM viu Top-K=6 e ofereceu 2 cards; pede mais. Avanca SO 2 (nao 6).
+    expect(computeNextSlotOffset({
+      action: "OFFER_SLOTS", requestMoreSlots: true, currentOffset: 0, offered: 2, totalRawSlots: 30,
+    })).toBe(2);
+    // Acumula com offset anterior.
+    expect(computeNextSlotOffset({
+      action: "OFFER_SLOTS", requestMoreSlots: true, currentOffset: 4, offered: 2, totalRawSlots: 30,
+    })).toBe(6);
+  });
+
+  it("computeNextSlotOffset reseta quando ofereceu+atual >= total (cap)", async () => {
+    const { computeNextSlotOffset } = await import("../lib/constrained-engine");
+    expect(computeNextSlotOffset({
+      action: "OFFER_SLOTS", requestMoreSlots: true, currentOffset: 28, offered: 2, totalRawSlots: 30,
+    })).toBe(0);
+  });
+
+  it("computeNextSlotOffset reseta para acoes que nao sao OFFER_SLOTS+request_more", async () => {
+    const { computeNextSlotOffset } = await import("../lib/constrained-engine");
+    for (const action of ["ASK_INFO", "JUST_REPLY", "ESCALATE", "SEND_PIX", "SEND_FEE"]) {
+      expect(computeNextSlotOffset({
+        action, requestMoreSlots: true, currentOffset: 8, offered: 0, totalRawSlots: 30,
+      })).toBe(0);
+    }
+    // OFFER_SLOTS sem request_more tambem reseta (paciente aceitou implicitamente um dos mostrados? não — engine confiará no mecanismo natural; offset volta a 0).
+    expect(computeNextSlotOffset({
+      action: "OFFER_SLOTS", requestMoreSlots: false, currentOffset: 8, offered: 2, totalRawSlots: 30,
+    })).toBe(0);
+  });
+
+  it("applyPagination passa lista inteira quando offset=0", async () => {
+    const { applyPagination } = await import("../lib/constrained-engine");
+    const slots = [1, 2, 3, 4, 5];
+    const r = applyPagination(slots, 0);
+    expect(r.paged).toEqual(slots);
+    expect(r.effectiveOffset).toBe(0);
+    expect(r.didReset).toBe(false);
+  });
+
+  it("applyPagination corta corretamente em offset valido", async () => {
+    const { applyPagination } = await import("../lib/constrained-engine");
+    const r = applyPagination([1, 2, 3, 4, 5], 2);
+    expect(r.paged).toEqual([3, 4, 5]);
+    expect(r.effectiveOffset).toBe(2);
+    expect(r.didReset).toBe(false);
+  });
+
+  it("applyPagination AUTO-RESET quando offset >= total (devolve lista inteira + didReset)", async () => {
+    const { applyPagination } = await import("../lib/constrained-engine");
+    const slots = [1, 2, 3];
+    const r = applyPagination(slots, 5);
+    expect(r.paged).toEqual(slots);
+    expect(r.effectiveOffset).toBe(0);
+    expect(r.didReset).toBe(true);
+  });
+
+  it("applyPagination saneia offset negativo", async () => {
+    const { applyPagination } = await import("../lib/constrained-engine");
+    const slots = [1, 2, 3];
+    const r = applyPagination(slots, -3);
+    expect(r.paged).toEqual(slots);
+    expect(r.effectiveOffset).toBe(0);
+  });
+
+  // ── Bug fix: profissional sem convenio nao aparece para paciente de convenio ──
+
+  it("[bug fix] prompt sinaliza profissional 'particular' quando acceptsInsurance=false", () => {
+    const profsMixed = [
+      { id: "p1", name: "Dr. Carlos", acceptsInsurance: true, insurancePlans: "Bradesco, Amil" },
+      { id: "p2", name: "Dra. Ana", acceptsInsurance: false, insurancePlans: null },
+    ];
+    const prompt = buildConstrainedPrompt({
+      ...buildBasicPromptCtx(),
+      professionals: profsMixed as any,
+      isInsuranceContact: true,
+    });
+    // Tag por profissional: p1 com convenio, p2 marcado como particular.
+    expect(prompt).toMatch(/p1\|Dr\. Carlos\|conv:Bradesco, Amil/);
+    expect(prompt).toMatch(/p2\|Dra\. Ana\|particular/);
+    // Reforco explicito na linha de CONTATO DE CONVENIO.
+    expect(prompt).toContain("Profissionais que ATENDEM convenio: p1");
+    expect(prompt).toContain("PROFISSIONAIS PROIBIDOS para esse paciente");
+    expect(prompt).toContain("p2");
+  });
+
+  it("[bug fix] paciente particular: nenhum reforco nem tags 'proibido' aparece", () => {
+    const profsMixed = [
+      { id: "p1", name: "Dr. Carlos", acceptsInsurance: true, insurancePlans: "Bradesco" },
+      { id: "p2", name: "Dra. Ana", acceptsInsurance: false, insurancePlans: null },
+    ];
+    const prompt = buildConstrainedPrompt({
+      ...buildBasicPromptCtx(),
+      professionals: profsMixed as any,
+      isInsuranceContact: false,
+    });
+    // Sem CONTATO DE CONVENIO injetado.
+    expect(prompt).not.toContain("CONTATO DE CONVENIO");
+    expect(prompt).not.toContain("PROIBIDOS");
+    // Tags por prof continuam aparecendo (informativo, nao restritivo).
+    expect(prompt).toMatch(/p2\|Dra\. Ana\|particular/);
+  });
+
+  it("[bug fix] aviso especial quando NENHUM profissional aceita convenio", () => {
+    const profsAllParticular = [
+      { id: "p1", name: "Dr. Solo", acceptsInsurance: false, insurancePlans: null },
+    ];
+    const prompt = buildConstrainedPrompt({
+      ...buildBasicPromptCtx(),
+      professionals: profsAllParticular as any,
+      isInsuranceContact: true,
+    });
+    expect(prompt).toContain("NENHUM profissional cadastrado atende convenio");
+    // Nao deve listar profissionais que atendem (porque nao ha).
+    expect(prompt).not.toMatch(/Profissionais que ATENDEM convenio:/);
+  });
+
+  it("nao inclui memorias reservadas (slot_offset/agendamento) como bullets livres", async () => {
+    const dbMod = await import("@workspace/db") as any;
+    dbMod.__setQueueFor__("dentalLeads", [[null]]);
+    dbMod.__setQueueFor__("aiContactMemory", [[
+      { memoryType: "slot_offset", content: "12", editedContent: null, createdAt: new Date() },
+      { memoryType: "agendamento", content: "marcado p/ Dr X em 2026-04-27 09:00", editedContent: null, createdAt: new Date() },
+      { memoryType: "preferencia", content: "Manha", editedContent: null, createdAt: new Date() },
+    ]]);
+
+    const facts = await buildFactsBlock(1, "+5511999999999", new Map());
+    // slot_offset (numerico interno) NUNCA deve vazar pro prompt.
+    expect(facts.text ?? "").not.toContain("slot_offset");
+    expect(facts.text ?? "").not.toContain("12");
+    // agendamento (reservado) tambem nao aparece como bullet livre.
+    expect(facts.text ?? "").not.toContain("agendamento:");
+    // preferencia (livre) aparece normalmente.
+    expect(facts.text).toContain("preferencia:");
+  });
+});

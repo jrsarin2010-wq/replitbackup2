@@ -38,7 +38,12 @@ import {
   type RenderContext,
 } from "./structured-renderer";
 import { validateConstrainedReply } from "./response-validator";
-import { persistConfirmSlotSignal } from "./constrained-facts";
+import {
+  persistConfirmSlotSignal,
+  persistOfferSlotsSignal,
+  updateLastOfferOutcome,
+  setSlotOffset,
+} from "./constrained-facts";
 
 const PEAK_TIMEOUT_MS = 8_000;
 
@@ -88,6 +93,14 @@ export interface ConstrainedRunInput {
    * undefined, assume-se que `availableSlots.length` já é o total bruto.
    */
   totalAvailableSlots?: number;
+  /**
+   * Task #1 — Offset de paginação determinística de slots. Quando > 0, o
+   * engine pula esse número de slots antes de aplicar o Top-K. Persistido
+   * por `setSlotOffset` quando o LLM responde `request_more_slots: true`,
+   * resetado para 0 em CONFIRM_SLOT. Caller (ai-engine.ts) carrega via
+   * `getSlotOffset` antes de chamar.
+   */
+  slotOffset?: number;
 }
 
 export interface ConstrainedRunResult {
@@ -120,6 +133,61 @@ const ALLOWED_ACTIONS = new Set([
   "JUST_REPLY",
 ]);
 
+// ──────────────────────────────────────────────────────────────────────────
+// Task #1 (post-review #2) — helpers puros de paginação. Extraídos para
+// facilitar testes unitários da lógica sem precisar mockar OpenAI/DB.
+// ──────────────────────────────────────────────────────────────────────────
+
+/**
+ * Aplica offset à lista bruta de slots. Se o offset estourar (>= total),
+ * auto-reseta para 0 (wrap), sinalizando ao chamador que precisa também
+ * persistir o reset para evitar exibir página vazia ao paciente.
+ *
+ * @returns paged: slots após o offset; effectiveOffset: offset realmente usado
+ *          (0 quando houve auto-reset); didReset: true quando wrap aconteceu.
+ */
+export function applyPagination<T>(
+  slots: readonly T[],
+  rawOffset: number,
+): { paged: readonly T[]; effectiveOffset: number; didReset: boolean } {
+  const total = slots.length;
+  const offset = Math.max(0, Math.floor(rawOffset || 0));
+  if (offset === 0) return { paged: slots, effectiveOffset: 0, didReset: false };
+  // Auto-reset: se a paginação saltaria além do total, volta ao começo.
+  // Caso contrário o engine exibiria [SLOTS] vazio e a IA poderia escalar
+  // sem motivo. Reset preserva o offer-loop natural.
+  if (offset >= total) return { paged: slots, effectiveOffset: 0, didReset: true };
+  return { paged: slots.slice(offset), effectiveOffset: offset, didReset: false };
+}
+
+/**
+ * Calcula o próximo offset a persistir a partir do estado pós-dispatch.
+ *
+ * Regras (contrato):
+ *   - CONFIRM_SLOT                       → 0 (reset)
+ *   - OFFER_SLOTS + request_more=true    → currentOffset + offered (cap em total)
+ *   - qualquer outra ação                → 0 (reset; conversa mudou de contexto)
+ *
+ * `offered` deve ser o número de slot_ids que viraram CARDS para o paciente
+ * (parsed.slot_ids.length), e NÃO o tamanho do Top-K visto pelo LLM. Assim
+ * nunca pulamos slots que o paciente jamais chegou a ver.
+ */
+export function computeNextSlotOffset(args: {
+  action: string;
+  requestMoreSlots: boolean;
+  currentOffset: number;
+  offered: number;
+  totalRawSlots: number;
+}): number {
+  const { action, requestMoreSlots, currentOffset, offered, totalRawSlots } = args;
+  if (action === "CONFIRM_SLOT") return 0;
+  if (action !== "OFFER_SLOTS" || !requestMoreSlots) return 0;
+  const next = Math.max(0, Math.floor(currentOffset || 0)) + Math.max(0, Math.floor(offered || 0));
+  // Cap: nunca passa do total — o próximo turno faria wrap/reset de qualquer jeito.
+  if (next >= totalRawSlots) return 0;
+  return next;
+}
+
 function safeParseStructured(raw: string): StructuredAIResponse | null {
   if (!raw) return null;
   try {
@@ -131,6 +199,9 @@ function safeParseStructured(raw: string): StructuredAIResponse | null {
       slot_ids: Array.isArray(obj.slot_ids) ? obj.slot_ids.map((s) => String(s)) : [],
       professional_id: typeof obj.professional_id === "string" ? obj.professional_id : null,
       reply_text: typeof obj.reply_text === "string" ? obj.reply_text : "",
+      // Task #1 — strict schema garante presença, mas defendemos contra
+      // payloads não-strict (fallback path, modelos que retornam parcial).
+      request_more_slots: obj.request_more_slots === true,
     };
   } catch {
     return null;
@@ -141,8 +212,25 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   const startTs = Date.now();
 
   // 1. IDs estáveis ───────────────────────────────────────────────────────
+  // Bug fix (post-review #2) — quando o paciente é de CONVÊNIO, filtramos
+  // slots de profissionais que NÃO atendem convênio. Antes desse filtro
+  // o LLM podia oferecer slots do "Dr. Particular Só" para um paciente do
+  // Bradesco (bug reportado pelo cliente). O filtro acontece ANTES da
+  // paginação para que a contagem de slots reflita só o conjunto válido.
+  const profAcceptsInsurance = new Map<number, boolean>(
+    input.professionals.map((p) => [p.id, p.acceptsInsurance === true]),
+  );
+  const insuranceFilteredRaw = input.isInsuranceContact
+    ? input.availableSlots.filter((s) => profAcceptsInsurance.get(s.professionalId) === true)
+    : input.availableSlots;
+
+  // Task #1 — paginação determinística: aplica offset (request_more_slots
+  // do turno anterior) ANTES do Top-K via helper puro `applyPagination`,
+  // que também trata o caso de offset estourar a lista (auto-reset wrap).
+  const totalRawSlots = insuranceFilteredRaw.length;
+  const pagination = applyPagination(insuranceFilteredRaw, input.slotOffset ?? 0);
   const slotsWithIds: SlotWithId[] = assignSlotIds(
-    input.availableSlots,
+    pagination.paged as (typeof input.availableSlots),
     input.professionals.map((p) => ({ id: p.id, name: p.name })),
   );
   const profsWithIds: ProfessionalWithId[] = assignProfessionalIds(
@@ -153,6 +241,18 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   const responseSchema = buildResponseSchema(slotsWithIds, profsWithIds);
 
   // 3. Prompt restrito ────────────────────────────────────────────────────
+  // Bug fix — propaga acceptsInsurance/insurancePlans por profissional para
+  // o prompt mostrar "atende convenio: X,Y" ou "nao atende convenio" no
+  // bloco [PROFISSIONAIS]. O LLM passa a ver o status individual.
+  const profsForPrompt = profsWithIds.map((pw, i) => {
+    const full = input.professionals[i];
+    return {
+      id: pw.id,
+      name: pw.name,
+      acceptsInsurance: full?.acceptsInsurance ?? null,
+      insurancePlans: full?.insurancePlans ?? null,
+    };
+  });
   const promptText = buildConstrainedPrompt({
     clinicName: input.clinicName,
     aiName: input.aiName,
@@ -165,7 +265,7 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     intent: input.intent,
     patientContext: input.patientContext ?? null,
     slots: slotsWithIds,
-    professionals: profsWithIds,
+    professionals: profsForPrompt,
     procedureNames: input.procedureNames,
     insurancePlans: input.insurancePlans ?? null,
     todayLabel: input.todayLabel,
@@ -251,6 +351,7 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
 
   // 7. Inline appointment quando CONFIRM_SLOT ─────────────────────────────
   let inlineAppointment: AppointmentExtraction | null = null;
+  let acceptedSlotLabel: string | null = null;
   if (parsed.action === "CONFIRM_SLOT" && renderedRaw.shouldCreateAppointment && renderedRaw.chosenSlot) {
     inlineAppointment = {
       confirmed: true,
@@ -259,6 +360,9 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
       procedure: null,
       professionalName: renderedRaw.chosenProfessional?.name ?? null,
     };
+    // Label compacto p/ registrar no desfecho da última oferta.
+    const [y, m, d] = renderedRaw.chosenSlot.date.split("-");
+    acceptedSlotLabel = `${d}/${m}/${y.slice(2)} ${renderedRaw.chosenSlot.time}`;
     // Task #1 — persistir sinal de "agendou com X em Y" no ai_contact_memory
     // para que o próximo turno tenha o fato no bloco [FATOS]. Fire-and-forget.
     void persistConfirmSlotSignal({
@@ -268,6 +372,63 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
       professionalName: renderedRaw.chosenProfessional?.name ?? null,
       date: renderedRaw.chosenSlot.date,
       time: renderedRaw.chosenSlot.time,
+    });
+  }
+
+  // 7b. Task #1 — Atualiza desfecho da ÚLTIMA oferta (turno anterior) ANTES
+  // de persistir a NOVA oferta. Ordem é crítica: se invertido, o update
+  // sobrescreve a oferta recém-criada como "recusou (reofertou)" e não a
+  // anterior. Encadeamos no mesmo promise para garantir ordering apesar
+  // do fire-and-forget.
+  const offerSideEffects = updateLastOfferOutcome({
+    tenantId: input.tenantId,
+    contactPhone: input.contactPhone,
+    currentAction: parsed.action,
+    acceptedSlotId: parsed.action === "CONFIRM_SLOT" ? (parsed.slot_ids[0] ?? null) : null,
+    acceptedSlotLabel: parsed.action === "CONFIRM_SLOT" ? acceptedSlotLabel : null,
+  }).then(async () => {
+    // 7c. Persistência de OFFER_SLOTS (para ver desfecho no próximo turno).
+    if (parsed.action !== "OFFER_SLOTS" || parsed.slot_ids.length === 0) return;
+    const offeredSlots = parsed.slot_ids
+      .map((sid) => slotsWithIds.find((s) => s.id === sid))
+      .filter((s): s is SlotWithId => !!s);
+    if (offeredSlots.length === 0) return;
+    const slotLabels = offeredSlots.map((s) => {
+      const [y, m, d] = s.date.split("-");
+      return `${d}/${m} ${s.time.slice(0, 5)}`;
+    });
+    await persistOfferSlotsSignal({
+      tenantId: input.tenantId,
+      contactPhone: input.contactPhone,
+      conversationId: input.conversationId,
+      slotIds: parsed.slot_ids,
+      slotLabels,
+      professionalId: parsed.professional_id ?? null,
+    });
+  });
+  void offerSideEffects;
+
+  // 7d. Task #1 — Atualiza offset de paginação via helper puro
+  // `computeNextSlotOffset`. Avança APENAS quando OFFER_SLOTS+request_more,
+  // pelo número de slots EFETIVAMENTE oferecidos como cards (parsed.slot_ids
+  // .length) — nunca pelo Top-K, para não pular slots que o paciente
+  // jamais viu. Reset em CONFIRM_SLOT e em qualquer outra ação.
+  // Adicionalmente, se applyPagination fez auto-reset por exhaustion,
+  // persistimos o reset para limpar o estado salvo.
+  const nextOffset = computeNextSlotOffset({
+    action: parsed.action,
+    requestMoreSlots: parsed.request_more_slots,
+    currentOffset: pagination.effectiveOffset,
+    offered: parsed.slot_ids.length,
+    totalRawSlots,
+  });
+  // Só escreve se houve mudança em relação ao estado anterior (input.slotOffset).
+  if (nextOffset !== (input.slotOffset ?? 0) || pagination.didReset) {
+    void setSlotOffset({
+      tenantId: input.tenantId,
+      contactPhone: input.contactPhone,
+      conversationId: input.conversationId,
+      offset: nextOffset,
     });
   }
 

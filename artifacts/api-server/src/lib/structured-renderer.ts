@@ -30,6 +30,14 @@ export type RenderableProfessional = {
   consultationFee?: string | null;
   chargesConsultation?: boolean | null;
   isOwner?: boolean | null;
+  /**
+   * Bug fix (Task #1, post-review #2) — campos de convênio por profissional.
+   * `acceptsInsurance=false` significa "atende SÓ particular"; oferecer
+   * agenda dele a um paciente de convênio é o bug que motivou esse fix.
+   * `insurancePlans` é a lista textual ("Bradesco, Amil") quando atende.
+   */
+  acceptsInsurance?: boolean | null;
+  insurancePlans?: string | null;
 };
 
 export interface RenderContext {

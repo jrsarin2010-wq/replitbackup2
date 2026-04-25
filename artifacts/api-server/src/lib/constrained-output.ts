@@ -59,6 +59,15 @@ export interface StructuredAIResponse {
   /** Texto empático/conversacional. NÃO deve conter datas, horas, preços nem
    *  nomes próprios — esses são injetados pelo render layer. */
   reply_text: string;
+  /**
+   * Task #1 — Sinaliza que o paciente recusou os slots já mostrados e quer
+   * ver MAIS opções. Quando true e o servidor tem mais slots disponíveis
+   * além dos exibidos, o próximo turno carrega slots além do offset atual
+   * (paginação determinística). Quando false, o offset é resetado.
+   *
+   * Pertence ao schema strict, sempre obrigatório no payload (default = false).
+   */
+  request_more_slots: boolean;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -160,8 +169,13 @@ export function buildResponseSchema(
             description:
               "Texto empático em pt-BR (1-3 frases, WhatsApp). PROIBIDO: datas, horas, preços, nomes próprios — o servidor injeta tudo isso ao renderizar.",
           },
+          request_more_slots: {
+            type: "boolean",
+            description:
+              "Coloque true quando o paciente recusou os horários mostrados e quer ver mais opções da agenda. Sempre false para CONFIRM_SLOT, SEND_PIX, SEND_FEE, ESCALATE. O servidor pagina os próximos slots no turno seguinte.",
+          },
         },
-        required: ["action", "slot_ids", "professional_id", "reply_text"],
+        required: ["action", "slot_ids", "professional_id", "reply_text", "request_more_slots"],
         additionalProperties: false,
       },
     },

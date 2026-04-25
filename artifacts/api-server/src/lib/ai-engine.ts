@@ -1241,7 +1241,7 @@ export async function processIncomingMessage(
   if (useConstrainedGeneration) {
     // ── Caminho RESTRITO (Task #25) ─────────────────────────────────────────
     const { runConstrainedGeneration } = await import("./constrained-engine");
-    const { buildFactsBlock } = await import("./constrained-facts");
+    const { buildFactsBlock, getSlotOffset } = await import("./constrained-facts");
     const settingsForConstrained = await getCachedSettings(tenantId).catch(() => null);
     const procsForConstrained = await getCachedProcedures(tenantId).catch(() => []);
     const localNow = new Date(Date.now() + utcOffsetHours * 3600000);
@@ -1266,6 +1266,10 @@ export async function processIncomingMessage(
       consultationFee: p.consultationFee ?? null,
       chargesConsultation: p.chargesConsultation ?? null,
       isOwner: p.isOwner ?? null,
+      // Bug fix (post-review #2) — propagar config de convênio por
+      // profissional para o engine restrito filtrar slots e mostrar status.
+      acceptsInsurance: p.acceptsInsurance ?? null,
+      insurancePlans: p.insurancePlans ?? null,
     }));
     // Task #1 — bloco [FATOS] determinístico construído ANTES da chamada à
     // OpenAI. profIdShortByDbId mapeia profId numérico → "pX" usando a MESMA
@@ -1275,6 +1279,10 @@ export async function processIncomingMessage(
     const facts = await buildFactsBlock(tenantId, contactPhone, profIdShortByDbId).catch(() => ({ text: null, factCount: 0 }));
     // aiSummary já é carregado por `getOrCreateConversation` no início do fluxo.
     const totalAvailableSlots = availabilityResult.availableSlots?.length ?? 0;
+    // Task #1 — paginação determinística: lê offset persistido do turno
+    // anterior (incrementado quando IA pediu request_more_slots, resetado
+    // em CONFIRM_SLOT). Falha silenciosa retorna 0.
+    const slotOffset = await getSlotOffset(tenantId, contactPhone).catch(() => 0);
     try {
       const cr = await runConstrainedGeneration({
         client,
@@ -1289,6 +1297,7 @@ export async function processIncomingMessage(
         isFirstContact,
         availableSlots: availabilityResult.availableSlots ?? [],
         totalAvailableSlots,
+        slotOffset,
         professionals: constrainedProfessionals,
         procedureNames: procsForConstrained.map((p) => p.name).filter(Boolean),
         insurancePlans: settingsForConstrained?.insurancePlans ?? null,
