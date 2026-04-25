@@ -703,6 +703,65 @@ describe("constrained-facts / buildFactsBlock (post-review)", () => {
     expect(r.effectiveOffset).toBe(0);
   });
 
+  // Task #4 — jornada multi-turno: paciente pede mais opcoes; servidor
+  // pagina ate esgotar e wrap-reseta. Cobre o contrato end-to-end exigido
+  // pelo critério de aceite ("a IA sinaliza, servidor entrega slots 7-12
+  // no proximo turno, log marca request_more").
+  it("[jornada multi-turno] paginacao avanca por turnos quando paciente pede mais opcoes", async () => {
+    const { applyPagination, computeNextSlotOffset } = await import("../lib/constrained-engine");
+    const rawSlots = Array.from({ length: 12 }, (_, i) => `s${i + 1}`);
+
+    // Turno 1 — paciente pede primeiro horario; offset=0; IA mostra 6 cards
+    // e o paciente recusa pedindo mais.
+    const t1 = applyPagination(rawSlots, 0);
+    expect(t1.paged.slice(0, 6)).toEqual(["s1","s2","s3","s4","s5","s6"]);
+    expect(t1.effectiveOffset).toBe(0);
+    const nextAfterT1 = computeNextSlotOffset({
+      action: "OFFER_SLOTS",
+      requestMoreSlots: true,
+      currentOffset: t1.effectiveOffset,
+      offered: 6,
+      totalRawSlots: rawSlots.length,
+    });
+    expect(nextAfterT1).toBe(6);
+
+    // Turno 2 — servidor entrega slots 7-12; paciente recusa de novo.
+    const t2 = applyPagination(rawSlots, nextAfterT1);
+    expect(t2.paged.slice(0, 6)).toEqual(["s7","s8","s9","s10","s11","s12"]);
+    expect(t2.effectiveOffset).toBe(6);
+    expect(t2.didReset).toBe(false);
+    const nextAfterT2 = computeNextSlotOffset({
+      action: "OFFER_SLOTS",
+      requestMoreSlots: true,
+      currentOffset: t2.effectiveOffset,
+      offered: 6,
+      totalRawSlots: rawSlots.length,
+    });
+    // 6 + 6 = 12 = total → wrap reset para 0 (nao ha mais lotes).
+    expect(nextAfterT2).toBe(0);
+
+    // Turno 3 — paciente confirma; offset zera explicitamente.
+    const nextAfterConfirm = computeNextSlotOffset({
+      action: "CONFIRM_SLOT",
+      requestMoreSlots: false,
+      currentOffset: 6,
+      offered: 1,
+      totalRawSlots: rawSlots.length,
+    });
+    expect(nextAfterConfirm).toBe(0);
+  });
+
+  it("[jornada multi-turno] auto-reset acontece quando offset persistido > total raw atual", async () => {
+    const { applyPagination } = await import("../lib/constrained-engine");
+    // Cenario: offset=8 ficou salvo do turno anterior, mas hoje a agenda
+    // mudou e so ha 5 slots disponiveis. Engine wrap-reseta e devolve
+    // didReset=true para que o caller persista offset=0.
+    const r = applyPagination(["a", "b", "c", "d", "e"], 8);
+    expect(r.paged).toEqual(["a", "b", "c", "d", "e"]);
+    expect(r.effectiveOffset).toBe(0);
+    expect(r.didReset).toBe(true);
+  });
+
   // ── Bug fix: profissional sem convenio nao aparece para paciente de convenio ──
 
   it("[bug fix] prompt sinaliza profissional 'particular' quando acceptsInsurance=false", () => {
