@@ -21,7 +21,7 @@
 import type { OpenAI } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
 import { dentalLeadsTable, aiContactMemoryTable } from "@workspace/db";
-import { and, eq, desc, ne } from "drizzle-orm";
+import { and, eq, desc, ne, sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { maskPhone } from "./pii-mask";
 
@@ -157,43 +157,13 @@ export async function buildFactsBlock(
 }
 
 /**
- * Dedup in-memory por chave (tenant|phone|date|time) com TTL curto.
- *
- * O check `existing.some(...)` no DB cobre a janela de horas/dias, mas duas
- * chamadas concorrentes (ex.: webhook duplicado, retry da Evolution API)
- * podem fazer read-then-insert ao mesmo tempo e duplicar a memória. Este
- * mutex local elimina esse caso comum (mesmo processo, mesma janela curta)
- * sem exigir mudança de schema/migration.
- *
- * O TTL é alto o suficiente p/ cobrir retries simultâneos (60s) e baixo o
- * suficiente p/ não acumular memória no processo (limpeza preguiçosa).
- */
-const inflightConfirmSignals = new Map<string, number>();
-const INFLIGHT_TTL_MS = 60_000;
-
-function reserveInflight(key: string): boolean {
-  const now = Date.now();
-  // Limpeza preguiçosa: se a tabela passou de 200 entradas, varre uma vez.
-  if (inflightConfirmSignals.size > 200) {
-    for (const [k, exp] of inflightConfirmSignals) {
-      if (exp <= now) inflightConfirmSignals.delete(k);
-    }
-  }
-  const existing = inflightConfirmSignals.get(key);
-  if (existing && existing > now) return false;
-  inflightConfirmSignals.set(key, now + INFLIGHT_TTL_MS);
-  return true;
-}
-
-/**
  * Persiste um sinal de "agendou com X em Y" no `ai_contact_memory` quando o
  * motor restrito despacha CONFIRM_SLOT. Fire-and-forget: NUNCA throw.
  *
- * Dedup em duas camadas:
- *   1. In-memory mutex (tenant|phone|date|time) com TTL de 60s — protege
- *      contra retries simultâneos no MESMO processo.
- *   2. find-then-insert no DB — protege contra reentradas em janelas longas
- *      (post-restart, distribuição cross-process).
+ * Dedup é garantido pelo índice parcial único `uniq_ai_contact_memory_agendamento`
+ * em `(tenant_id, contact_phone, lower(content)) WHERE memory_type='agendamento'`,
+ * combinado com `ON CONFLICT DO NOTHING`. Funciona mesmo em ambiente
+ * multi-processo / múltiplas máquinas — o próprio Postgres rejeita a duplicata.
  */
 export async function persistConfirmSlotSignal(args: {
   tenantId: number;
@@ -206,38 +176,39 @@ export async function persistConfirmSlotSignal(args: {
   const { tenantId, contactPhone, conversationId, professionalName, date, time } = args;
   if (!tenantId || !contactPhone || !date) return;
 
-  // Camada 1: in-memory dedup. Se outra task já está inserindo este sinal,
-  // simplesmente retorna sem tocar no DB.
-  const inflightKey = `${tenantId}|${contactPhone}|${date}|${time}`;
-  if (!reserveInflight(inflightKey)) return;
-
   try {
     const [y, m, d] = date.split("-");
     const dateBR = `${d}/${m}/${y.slice(2)}`;
     const profPart = professionalName ? ` com ${professionalName.substring(0, 60)}` : "";
     const content = `agendou${profPart} em ${dateBR} ${time}`;
 
-    const existing = await db.query.aiContactMemoryTable.findMany({
-      where: and(
-        eq(aiContactMemoryTable.tenantId, tenantId),
-        eq(aiContactMemoryTable.contactPhone, contactPhone),
-        eq(aiContactMemoryTable.memoryType, "agendamento"),
-      ),
-      orderBy: [desc(aiContactMemoryTable.createdAt)],
-      limit: 5,
-    });
-    if (existing.some((e) => (e.content || "").toLowerCase() === content.toLowerCase())) {
+    const inserted = await db
+      .insert(aiContactMemoryTable)
+      .values({
+        tenantId,
+        contactPhone,
+        memoryType: "agendamento",
+        content,
+        source: "auto",
+        conversationId,
+      })
+      .onConflictDoNothing({
+        target: [
+          aiContactMemoryTable.tenantId,
+          aiContactMemoryTable.contactPhone,
+          sql`lower(${aiContactMemoryTable.content})`,
+        ],
+        targetWhere: sql`memory_type = 'agendamento'`,
+      })
+      .returning({ id: aiContactMemoryTable.id });
+
+    if (inserted.length === 0) {
+      logger.debug(
+        { tenantId, contactPhone: maskPhone(contactPhone), conversationId },
+        "constrained-facts: CONFIRM_SLOT signal already persisted (dedup by unique index)",
+      );
       return;
     }
-
-    await db.insert(aiContactMemoryTable).values({
-      tenantId,
-      contactPhone,
-      memoryType: "agendamento",
-      content,
-      source: "auto",
-      conversationId,
-    });
 
     logger.info(
       { tenantId, contactPhone: maskPhone(contactPhone), conversationId },
