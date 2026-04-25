@@ -24,6 +24,7 @@ import type { AvailableSlot } from "./schedule-engine";
 import type { AppointmentExtraction } from "./appointment-extractor";
 import {
   assignSlotIds,
+  rankSlotsForRelevance,
   assignProfessionalIds,
   buildResponseSchema,
   type SlotWithId,
@@ -224,11 +225,21 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     ? input.availableSlots.filter((s) => profAcceptsInsurance.get(s.professionalId) === true)
     : input.availableSlots;
 
+  // Post-review #3 — ranking determinístico de relevância ANTES da paginação:
+  // (a) profissional preferido (primeiro em `professionals` — quando o
+  // roteador escolhe um profissional ele entra na posição 0); (b) data/hora
+  // ascendente; (c) ordem original (estável). Só depois aplicamos offset e
+  // Top-K (5) para o LLM.
+  const rankedRaw = rankSlotsForRelevance(
+    insuranceFilteredRaw,
+    input.professionals.map((p) => ({ id: p.id, name: p.name })),
+  );
+
   // Task #1 — paginação determinística: aplica offset (request_more_slots
   // do turno anterior) ANTES do Top-K via helper puro `applyPagination`,
   // que também trata o caso de offset estourar a lista (auto-reset wrap).
-  const totalRawSlots = insuranceFilteredRaw.length;
-  const pagination = applyPagination(insuranceFilteredRaw, input.slotOffset ?? 0);
+  const totalRawSlots = rankedRaw.length;
+  const pagination = applyPagination(rankedRaw, input.slotOffset ?? 0);
   const slotsWithIds: SlotWithId[] = assignSlotIds(
     pagination.paged as (typeof input.availableSlots),
     input.professionals.map((p) => ({ id: p.id, name: p.name })),
@@ -335,6 +346,10 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
       slot_ids: [],
       professional_id: null,
       reply_text: "Desculpe, deixa eu confirmar com a clinica e ja te aviso.",
+      // Post-review #3 — fallback deve respeitar o contrato strict do
+      // StructuredAIResponse (campo obrigatório). Reset implícito de offset
+      // garante que próxima oferta começa do início.
+      request_more_slots: false,
     };
 
   // 6. Render determinístico ──────────────────────────────────────────────

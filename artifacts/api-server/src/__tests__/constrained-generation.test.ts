@@ -388,16 +388,50 @@ describe("constrained-output / formato compacto p/ prompt (Task #1)", () => {
     expect(s3.compactLabel).toContain("|p2");
   });
 
-  it("assignSlotIds aplica Top-K (default = 6) — Task #1", () => {
-    // Cria 10 slots para forcar truncamento — antes o default era 12.
+  it("assignSlotIds aplica Top-K (default = 5) — Task #1", () => {
+    // Cria 10 slots para forcar truncamento. Default reduzido para 5 por
+    // exigência do code review #3 (alinha custo/contexto com o spec original).
     const many: AvailableSlot[] = Array.from({ length: 10 }, (_, i) => ({
       date: "2026-04-27",
       time: `${String(8 + i).padStart(2, "0")}:00`,
       professionalId: 1,
     }));
     const out = assignSlotIds(many, [{ id: 1, name: "Dr. Carlos" }]);
-    expect(out.length).toBe(6);
-    expect(out[5].id).toBe("s6");
+    expect(out.length).toBe(5);
+    expect(out[4].id).toBe("s5");
+  });
+
+  it("[ranking] rankSlotsForRelevance prioriza profissional preferido + cedo primeiro", async () => {
+    const { rankSlotsForRelevance } = await import("../lib/constrained-output");
+    const slots: AvailableSlot[] = [
+      { date: "2026-04-28", time: "10:00", professionalId: 2 },
+      { date: "2026-04-27", time: "15:00", professionalId: 2 },
+      { date: "2026-04-29", time: "09:00", professionalId: 1 },
+      { date: "2026-04-27", time: "08:00", professionalId: 1 },
+    ];
+    const profs = [
+      { id: 1, name: "Dr. Carlos" },
+      { id: 2, name: "Dra. Ana" },
+    ];
+    const ranked = rankSlotsForRelevance(slots, profs);
+    // Prof 1 (preferido) primeiro — entre os de prof 1, cedo (27/08:00) antes de 29/09:00.
+    expect(ranked[0]).toMatchObject({ professionalId: 1, date: "2026-04-27", time: "08:00" });
+    expect(ranked[1]).toMatchObject({ professionalId: 1, date: "2026-04-29", time: "09:00" });
+    // Depois prof 2 — cedo (27/15:00) antes de 28/10:00.
+    expect(ranked[2]).toMatchObject({ professionalId: 2, date: "2026-04-27", time: "15:00" });
+    expect(ranked[3]).toMatchObject({ professionalId: 2, date: "2026-04-28", time: "10:00" });
+  });
+
+  it("[ranking] rankSlotsForRelevance é estável (não muta entrada)", async () => {
+    const { rankSlotsForRelevance } = await import("../lib/constrained-output");
+    const slots: AvailableSlot[] = [
+      { date: "2026-04-27", time: "08:00", professionalId: 1 },
+      { date: "2026-04-27", time: "08:00", professionalId: 1 },
+    ];
+    const before = JSON.stringify(slots);
+    const ranked = rankSlotsForRelevance(slots, [{ id: 1, name: "X" }]);
+    expect(JSON.stringify(slots)).toBe(before);
+    expect(ranked.length).toBe(2);
   });
 });
 

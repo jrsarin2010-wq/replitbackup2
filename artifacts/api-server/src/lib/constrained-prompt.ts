@@ -179,7 +179,7 @@ ${profsBlock}
 - JUST_REPLY: apenas conversa empatica, sem ofertar/confirmar/cobrar.
 
 === REGRAS ABSOLUTAS DE SAIDA ===
-1. Responda EXCLUSIVAMENTE em JSON com os campos: action, slot_ids (array de IDs), professional_id (string ou null), reply_text (string).
+1. Responda EXCLUSIVAMENTE em JSON com os campos: action, slot_ids (array de IDs), professional_id (string ou null), reply_text (string), request_more_slots (boolean).
 2. Em "reply_text" PROIBIDO escrever:
    - datas (15/04, terca, amanha, hoje), horas (14h, 09:30, manha, tarde),
    - precos (R$, 200, gratuito, valor),
@@ -189,17 +189,20 @@ ${profsBlock}
 3. "reply_text" deve ter 1 a 3 frases curtas, empaticas, em pt-BR coloquial. Pode ser vazio se a acao ja diz tudo (ex.: SEND_PIX puro).
 4. slot_ids precisa ser subconjunto dos IDs listados em [SLOTS]. professional_id precisa ser ID de [PROFISSIONAIS] ou null.
 5. Se nao houver slots adequados, escolha ASK_INFO ou JUST_REPLY — NUNCA invente IDs.
+6. "request_more_slots" — use true APENAS quando o paciente recusou os horarios ja mostrados e pediu OUTRAS opcoes (ex.: "tem outro horario?", "nenhum desses"). O servidor entao paginara o proximo lote. Em qualquer outro caso, use false.
 
 EXEMPLOS:
 - Lead pede horario:
-  {"action":"OFFER_SLOTS","slot_ids":["s1","s4"],"professional_id":"p1","reply_text":"Entendi, dor incomoda demais."}
+  {"action":"OFFER_SLOTS","slot_ids":["s1","s4"],"professional_id":"p1","reply_text":"Entendi, dor incomoda demais.","request_more_slots":false}
 - Lead diz "pode ser o de quarta as 14h":
-  {"action":"CONFIRM_SLOT","slot_ids":["s4"],"professional_id":"p1","reply_text":"Perfeito!"}
+  {"action":"CONFIRM_SLOT","slot_ids":["s4"],"professional_id":"p1","reply_text":"Perfeito!","request_more_slots":false}
+- Lead diz "nenhum desses, tem outro?":
+  {"action":"OFFER_SLOTS","slot_ids":["s1","s2"],"professional_id":"p1","reply_text":"Claro, da uma olhada nessas.","request_more_slots":true}
 - Particular pede pagamento:
-  {"action":"SEND_PIX","slot_ids":[],"professional_id":"p1","reply_text":"Claro, segue os dados."}
+  {"action":"SEND_PIX","slot_ids":[],"professional_id":"p1","reply_text":"Claro, segue os dados.","request_more_slots":false}
 - Paciente quer saber preco:
-  {"action":"SEND_FEE","slot_ids":[],"professional_id":"p1","reply_text":"Sem problema."}
+  {"action":"SEND_FEE","slot_ids":[],"professional_id":"p1","reply_text":"Sem problema.","request_more_slots":false}
 - Triagem convenio:
-  {"action":"ASK_INFO","slot_ids":[],"professional_id":null,"reply_text":"Voce vai pelo plano ou prefere particular?"}
+  {"action":"ASK_INFO","slot_ids":[],"professional_id":null,"reply_text":"Voce vai pelo plano ou prefere particular?","request_more_slots":false}
 `;
 }

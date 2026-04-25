@@ -75,13 +75,52 @@ export interface StructuredAIResponse {
 // ──────────────────────────────────────────────────────────────────────────
 
 /**
+ * Top-K target — número máximo de slots oferecidos por turno ao LLM. Mantido
+ * baixo para reduzir contexto/custos e forçar o LLM a escolher entre poucas
+ * opções de alta relevância.
+ */
+export const TOP_K_SLOTS = 5;
+
+/**
+ * Ordena `slots` por relevância determinística antes da emissão para o
+ * prompt. Critérios em ordem:
+ *  1. Profissional preferido — quem está antes na lista `professionals` ganha
+ *     prioridade (primeiro = mais relevante; quando o roteador foca um
+ *     profissional, ele aparece na posição 0).
+ *  2. Data/hora ascendente (mais cedo primeiro).
+ *  3. Ordem original (estável).
+ *
+ * Não modifica a lista original — devolve nova array.
+ */
+export function rankSlotsForRelevance(
+  slots: AvailableSlot[],
+  professionals: Array<{ id: number; name: string }>,
+): AvailableSlot[] {
+  const profRank = new Map<number, number>();
+  professionals.forEach((p, i) => profRank.set(p.id, i));
+  return slots
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => {
+      const ra = a.s.professionalId != null ? profRank.get(a.s.professionalId) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+      const rb = b.s.professionalId != null ? profRank.get(b.s.professionalId) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+      if (ra !== rb) return ra - rb;
+      const ka = `${a.s.date}T${a.s.time}`;
+      const kb = `${b.s.date}T${b.s.time}`;
+      if (ka < kb) return -1;
+      if (ka > kb) return 1;
+      return a.i - b.i;
+    })
+    .map((x) => x.s);
+}
+
+/**
  * Recebe a lista bruta de slots disponíveis e devolve até `limit` slots com
  * IDs estáveis e label legível. Ordem preservada (mesma do schedule-engine).
  */
 export function assignSlotIds(
   slots: AvailableSlot[],
   professionals: Array<{ id: number; name: string }>,
-  limit = 6,
+  limit = TOP_K_SLOTS,
 ): SlotWithId[] {
   const profById = new Map(professionals.map((p) => [p.id, p.name]));
   // pId mapping (numeric profId → "pN") deve seguir a MESMA ordem que
