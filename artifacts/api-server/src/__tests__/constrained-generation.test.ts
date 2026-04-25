@@ -705,50 +705,74 @@ describe("constrained-facts / buildFactsBlock (post-review)", () => {
 
   // Task #4 — jornada multi-turno: paciente pede mais opcoes; servidor
   // pagina ate esgotar e wrap-reseta. Cobre o contrato end-to-end exigido
-  // pelo critério de aceite ("a IA sinaliza, servidor entrega slots 7-12
+  // pelo criterio de aceite ("a IA sinaliza, servidor entrega novo lote
   // no proximo turno, log marca request_more").
-  it("[jornada multi-turno] paginacao avanca por turnos quando paciente pede mais opcoes", async () => {
+  //
+  // Semantica de producao (REGRA 2 do prompt em constrained-prompt.ts):
+  // OFFER_SLOTS oferece 1 ou 2 cards por turno (nao todos os Top-K). O
+  // offset avanca pelo numero de slot_ids EFETIVAMENTE ofertados — por
+  // isso usamos `offered: 2` aqui, nao o tamanho do Top-K.
+  it("[jornada multi-turno] paginacao avanca 2-em-2 quando paciente recusa e pede mais", async () => {
     const { applyPagination, computeNextSlotOffset } = await import("../lib/constrained-engine");
-    const rawSlots = Array.from({ length: 12 }, (_, i) => `s${i + 1}`);
+    const rawSlots = Array.from({ length: 8 }, (_, i) => `s${i + 1}`);
 
-    // Turno 1 — paciente pede primeiro horario; offset=0; IA mostra 6 cards
-    // e o paciente recusa pedindo mais.
+    // Turno 1 — offset=0; IA escolhe s1+s2 dos primeiros disponiveis.
+    // Paciente recusa pedindo outras opcoes.
     const t1 = applyPagination(rawSlots, 0);
-    expect(t1.paged.slice(0, 6)).toEqual(["s1","s2","s3","s4","s5","s6"]);
+    expect(t1.paged[0]).toBe("s1");
     expect(t1.effectiveOffset).toBe(0);
+    expect(t1.didReset).toBe(false);
     const nextAfterT1 = computeNextSlotOffset({
       action: "OFFER_SLOTS",
       requestMoreSlots: true,
       currentOffset: t1.effectiveOffset,
-      offered: 6,
+      offered: 2,
       totalRawSlots: rawSlots.length,
     });
-    expect(nextAfterT1).toBe(6);
+    expect(nextAfterT1).toBe(2);
 
-    // Turno 2 — servidor entrega slots 7-12; paciente recusa de novo.
+    // Turno 2 — servidor pula 2 slots e a janela passa a comecar em s3.
+    // IA oferta s3+s4; paciente recusa de novo.
     const t2 = applyPagination(rawSlots, nextAfterT1);
-    expect(t2.paged.slice(0, 6)).toEqual(["s7","s8","s9","s10","s11","s12"]);
-    expect(t2.effectiveOffset).toBe(6);
+    expect(t2.paged[0]).toBe("s3");
+    expect(t2.effectiveOffset).toBe(2);
     expect(t2.didReset).toBe(false);
     const nextAfterT2 = computeNextSlotOffset({
       action: "OFFER_SLOTS",
       requestMoreSlots: true,
       currentOffset: t2.effectiveOffset,
-      offered: 6,
+      offered: 2,
       totalRawSlots: rawSlots.length,
     });
-    // 6 + 6 = 12 = total → wrap reset para 0 (nao ha mais lotes).
-    expect(nextAfterT2).toBe(0);
+    expect(nextAfterT2).toBe(4);
 
-    // Turno 3 — paciente confirma; offset zera explicitamente.
+    // Turno 3 — janela comeca em s5; IA oferta s5+s6; paciente confirma s5.
+    // Offset reseta explicitamente para zero.
+    const t3 = applyPagination(rawSlots, nextAfterT2);
+    expect(t3.paged[0]).toBe("s5");
+    expect(t3.effectiveOffset).toBe(4);
     const nextAfterConfirm = computeNextSlotOffset({
       action: "CONFIRM_SLOT",
       requestMoreSlots: false,
-      currentOffset: 6,
+      currentOffset: t3.effectiveOffset,
       offered: 1,
       totalRawSlots: rawSlots.length,
     });
     expect(nextAfterConfirm).toBe(0);
+  });
+
+  it("[jornada multi-turno] cap reset quando offset+ofertados >= total da janela", async () => {
+    const { computeNextSlotOffset } = await import("../lib/constrained-engine");
+    // Cenario: offset=6, total=8, IA oferece os 2 ultimos (s7+s8) e pede
+    // mais. 6+2=8 = total → engine reseta para 0 ao inves de cravar 8.
+    const next = computeNextSlotOffset({
+      action: "OFFER_SLOTS",
+      requestMoreSlots: true,
+      currentOffset: 6,
+      offered: 2,
+      totalRawSlots: 8,
+    });
+    expect(next).toBe(0);
   });
 
   it("[jornada multi-turno] auto-reset acontece quando offset persistido > total raw atual", async () => {
