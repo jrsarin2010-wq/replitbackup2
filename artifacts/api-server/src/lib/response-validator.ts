@@ -777,3 +777,39 @@ export function deterministicFallback(
   }
   return "Vou confirmar isso com a clínica e te respondo em breve.";
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Task #25 — Validador FINO para o caminho de constrained generation.
+//
+// O renderer determinístico é a fonte da verdade para datas/horas/preços/
+// nomes próprios — ele NÃO pode produzi-los errado por construção. Logo,
+// no caminho restrito só precisamos verificar duas coisas:
+//   1. termos comerciais agressivos proibidos em convênio (urgência,
+//      "perde a vaga", etc.) — reaproveitando insurance-audit;
+//   2. menção a planos de saúde quando isInsuranceContact=false e a clínica
+//      não aceita o plano (heurística leve, evita afirmação errada).
+//
+// Mantém a auditoria existente (insurance-audit) viva e descarta as 8+
+// regras estruturais do validador grande, que ficam impossíveis de violar.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface ConstrainedValidationOptions {
+  isInsuranceContact: boolean;
+  insurancePlans?: string | null;
+}
+
+export function validateConstrainedReply(
+  reply: string,
+  opts: ConstrainedValidationOptions,
+): Array<{ type: "insurance_sales_term"; detail: string }> {
+  const out: Array<{ type: "insurance_sales_term"; detail: string }> = [];
+  if (!reply || !reply.trim()) return out;
+
+  if (opts.isInsuranceContact) {
+    const terms = findForbiddenTerms(reply);
+    for (const t of terms) {
+      out.push({ type: "insurance_sales_term", detail: t });
+    }
+  }
+  return out;
+}

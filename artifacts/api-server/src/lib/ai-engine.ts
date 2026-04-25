@@ -966,6 +966,10 @@ export async function processIncomingMessage(
   const tenantRow = await db.query.tenantsTable.findFirst({ where: eq(tenantsTable.id, tenantId) });
   const tenantPlan = normalizePlanId(tenantRow?.plan) ?? tenantRow?.plan ?? "premium";
   const tenantIsBasicPlan = isBasicPlan(tenantPlan);
+  // Task #25 — feature flag de geração restrita (constrained generation).
+  // Quando ON, bypass do prompt-builder legado + validador de 779 linhas, usando
+  // JSON Schema com slot_ids/professional_id enums e render layer determinístico.
+  const useConstrainedGeneration = tenantRow?.useConstrainedGeneration === true;
 
   // ── Build userContent (clean — no [SISTEMA:] hints) ─────────────────────────
   const localNowTs = new Date(Date.now() + utcOffsetHours * 3600000);
@@ -1223,6 +1227,87 @@ export async function processIncomingMessage(
     "Prompt audit: final professionals list visible to LLM",
   );
 
+  // ── Task #25 — Vars compartilhadas entre caminho restrito e legado ────────
+  let reply: string = "";
+  let inlineAppointment: AppointmentExtraction | null = null;
+  let retryUsed = false;
+  let fallbackUsed = false;
+  let promptTokensFinal = 0;
+  let completionTokensFinal = 0;
+  let cachedTokens = 0;
+  let constrainedAction: string | null = null;
+  let constrainedViolations: string[] = [];
+
+  if (useConstrainedGeneration) {
+    // ── Caminho RESTRITO (Task #25) ─────────────────────────────────────────
+    const { runConstrainedGeneration } = await import("./constrained-engine");
+    const settingsForConstrained = await getCachedSettings(tenantId).catch(() => null);
+    const procsForConstrained = await getCachedProcedures(tenantId).catch(() => []);
+    const localNow = new Date(Date.now() + utcOffsetHours * 3600000);
+    const todayLabel = `${["Dom","Seg","Ter","Qua","Qui","Sex","Sab"][localNow.getUTCDay()]} ${String(localNow.getUTCDate()).padStart(2,"0")}/${String(localNow.getUTCMonth()+1).padStart(2,"0")}/${localNow.getUTCFullYear()}`;
+    const recentHistoryText = history
+      .slice(-6)
+      .map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`)
+      .join("\n");
+    const constrainedProfessionals = (professionalsOverride ? routedProfessionals : tenantProfessionals).map((p) => ({
+      id: p.id,
+      name: p.name,
+      pixEnabled: p.pixEnabled ?? null,
+      pixKey: p.pixKey ?? null,
+      pixBank: p.pixBank ?? null,
+      pixKeyType: p.pixKeyType ?? null,
+      pixMode: p.pixMode ?? null,
+      consultationFee: p.consultationFee ?? null,
+      chargesConsultation: p.chargesConsultation ?? null,
+      isOwner: p.isOwner ?? null,
+    }));
+    try {
+      const cr = await runConstrainedGeneration({
+        client,
+        tenantId,
+        conversationId,
+        contactName: contactName ?? null,
+        contactPhone,
+        contactType: context.contactType,
+        intent: String(intent),
+        conversationMode,
+        isInsuranceContact,
+        isFirstContact,
+        availableSlots: availabilityResult.availableSlots ?? [],
+        professionals: constrainedProfessionals,
+        procedureNames: procsForConstrained.map((p) => p.name).filter(Boolean),
+        insurancePlans: settingsForConstrained?.insurancePlans ?? null,
+        clinicName: settingsForConstrained?.clinicName ?? "a clinica",
+        aiName: settingsForConstrained?.aiName ?? "Sofia",
+        personalityHint: null,
+        settingsConsultationFee:
+          settingsForConstrained?.consultationFee != null
+            ? String(settingsForConstrained.consultationFee)
+            : null,
+        settingsChargesConsultation: settingsForConstrained?.chargesConsultation ?? null,
+        recentHistoryText,
+        userContent,
+        todayLabel,
+        model: selectedModel,
+      });
+      reply = cr.reply;
+      inlineAppointment = cr.inlineAppointment;
+      aiModel = cr.modelUsed;
+      promptTokensFinal = cr.promptTokens;
+      completionTokensFinal = cr.completionTokens;
+      cachedTokens = cr.cachedTokens;
+      constrainedAction = cr.structured.action;
+      constrainedViolations = cr.violations;
+    } catch (constrainedErr) {
+      logger.error(
+        { err: constrainedErr, tenantId, conversationId },
+        "constrained-engine: failed — using deterministic fallback reply",
+      );
+      reply = "Vou confirmar isso com a clinica e ja te aviso, ta bom?";
+      inlineAppointment = null;
+    }
+  } else {
+  // ── Caminho LEGADO ───────────────────────────────────────────────────────
   // ── Build split prompt ───────────────────────────────────────────────────────
   const { identityPrompt, dynamicContext } = await buildSplitPrompt(
     tenantId, context, intent, availabilityInfoForPrompt, incomingMessage,
@@ -1370,9 +1455,9 @@ export async function processIncomingMessage(
   // quando a OpenAI aplica o desconto de prompt cache). Só registra se foi a
   // chamada principal (gpt-5-mini) — o fallback distorce a média.
   const usage = (response as { usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } }).usage;
-  const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
-  const promptTokensFinal = usage?.prompt_tokens ?? 0;
-  const completionTokensFinal = usage?.completion_tokens ?? 0;
+  cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
+  promptTokensFinal = usage?.prompt_tokens ?? 0;
+  completionTokensFinal = usage?.completion_tokens ?? 0;
   // Record cache-hit metrics only when the actual final model is gpt-5 (prompt-cache
   // is only relevant/meaningful for gpt-5 models). Guard with both conditions:
   // no fallback occurred AND the model used is in the gpt-5 family.
@@ -1389,11 +1474,8 @@ export async function processIncomingMessage(
   );
 
   const rawContent = response.choices[0]?.message?.content || "";
-  let reply: string;
-  let inlineAppointment: AppointmentExtraction | null = null;
-  // Task #17 — auditoria precisa saber se houve retry e/ou fallback determinístico
-  let retryUsed = false;
-  let fallbackUsed = false;
+  // Task #25 — vars `reply`, `inlineAppointment`, `retryUsed`, `fallbackUsed`
+  // são hoisted antes do dispatcher (compartilhadas com o caminho restrito).
 
   if (useUnifiedSchema) {
     try {
@@ -1713,6 +1795,7 @@ export async function processIncomingMessage(
       "ai_response_validation: validator threw — keeping original reply",
     );
   }
+  } // end if (!useConstrainedGeneration) — fim do caminho legado (Task #25)
 
   // Task #17 — auditoria de obediência por modo. Roda em background para
   // não atrasar a resposta ao paciente. Snapshot dos sinais finais (após
@@ -1858,7 +1941,10 @@ export async function processIncomingMessage(
         }).catch((err) => {
           logger.error({ err, tenantId, conversationId }, "Failed to auto-create appointment from unified response");
         });
-      } else {
+      } else if (!useConstrainedGeneration) {
+        // Task #25 — quando o modo restrito está ON, SOMENTE CONFIRM_SLOT
+        // (que produz inlineAppointment) cria agendamento. A extração livre
+        // sobre o reply final é desabilitada para impedir agendamento fantasma.
         tryCreateAppointmentFromReply({
           client,
           tenantId,
@@ -1878,6 +1964,8 @@ export async function processIncomingMessage(
         }).catch((err) => {
           logger.error({ err, tenantId, conversationId }, "Failed to auto-create appointment from AI reply");
         });
+      } else {
+        logger.info({ tenantId, conversationId, intent, constrainedAction }, "constrained: skipped legacy extractor (only CONFIRM_SLOT may persist appointment)");
       }
     }
 

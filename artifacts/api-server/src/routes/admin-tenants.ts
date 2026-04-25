@@ -127,12 +127,13 @@ router.get("/tenants/:tenantId", async (req: Request, res: Response) => {
 
 router.patch("/tenants/:tenantId", async (req: Request, res: Response) => {
   const tenantId = Number(req.params.tenantId);
-  const { plan, subscriptionStatus, evolutionInstanceName, evolutionApiUrl, evolutionApiKey, elevenLabsApiKey, openaiApiKey, whatsappConnected, maxProfessionals, whatsappProvider, uazapiHost, uazapiAdminToken, uazapiInstanceToken, uazapiInstanceId } = req.body as {
+  const { plan, subscriptionStatus, evolutionInstanceName, evolutionApiUrl, evolutionApiKey, elevenLabsApiKey, openaiApiKey, whatsappConnected, maxProfessionals, whatsappProvider, uazapiHost, uazapiAdminToken, uazapiInstanceToken, uazapiInstanceId, useConstrainedGeneration } = req.body as {
     plan?: string; subscriptionStatus?: string;
     evolutionInstanceName?: string; evolutionApiUrl?: string; evolutionApiKey?: string;
     elevenLabsApiKey?: string; openaiApiKey?: string;
     whatsappConnected?: string; maxProfessionals?: number;
     whatsappProvider?: string; uazapiHost?: string; uazapiAdminToken?: string; uazapiInstanceToken?: string; uazapiInstanceId?: string;
+    useConstrainedGeneration?: boolean;
   };
 
   const tenant = await db.query.tenantsTable.findFirst({ where: eq(tenantsTable.id, tenantId) });
@@ -164,6 +165,10 @@ router.patch("/tenants/:tenantId", async (req: Request, res: Response) => {
   if (whatsappConnected) updates.whatsappConnected = whatsappConnected;
   if (maxProfessionals !== undefined && Number.isInteger(maxProfessionals) && maxProfessionals >= 1) {
     updates.maxProfessionals = maxProfessionals;
+  }
+  // Task #25 — toggle de geração restrita por slot ID.
+  if (typeof useConstrainedGeneration === "boolean") {
+    updates.useConstrainedGeneration = useConstrainedGeneration;
   }
 
   if (Object.keys(updates).length === 0) {

@@ -36,6 +36,7 @@ export const tenantsTable = pgTable("tenants", {
   scheduledPlan: varchar("scheduled_plan", { length: 50 }),
   scheduledPlanEffectiveAt: timestamp("scheduled_plan_effective_at", { withTimezone: true }),
   scheduledPlanRequestedAt: timestamp("scheduled_plan_requested_at", { withTimezone: true }),
+  useConstrainedGeneration: boolean("use_constrained_generation").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
