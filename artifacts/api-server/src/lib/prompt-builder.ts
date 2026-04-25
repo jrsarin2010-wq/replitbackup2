@@ -497,7 +497,7 @@ SEQUENCIA OBRIGATORIA:
 3. SE PLANO (convenio): ativacao automatica do fluxo de convenio — as regras detalhadas serao aplicadas apos a confirmacao.
 4. SE PARTICULAR: ativacao automatica do fluxo particular — as regras detalhadas serao aplicadas apos a confirmacao.
 
-${allInsurancePlansList ? `VALIDACAO OBRIGATORIA DE PLANO: Quando o contato informar o plano, verifique se esta na lista aceita (${allInsurancePlansList}). Se NAO estiver nessa lista, responda imediatamente: "Infelizmente a gente nao atende por esse plano. Os planos aceitos aqui sao: ${allInsurancePlansList}." Nunca confirme aceitacao de um plano que nao esteja na lista.` : ""}` : "";
+${allInsurancePlansList ? `COMPARACAO COM A LISTA DE PLANOS: Quando o contato informar o NOME do plano, compare com a lista aceita (${allInsurancePlansList}). Se NAO estiver nessa lista, responda imediatamente: "Infelizmente a gente nao atende por esse plano. Os planos aceitos aqui sao: ${allInsurancePlansList}." Nunca confirme aceitacao de um plano que nao esteja na lista. Apenas o NOME do plano basta para essa comparacao — NUNCA peca CPF, RG, carteirinha, numero do contrato, nome completo ou qualquer dado pessoal. A clinica nao verifica elegibilidade pelo WhatsApp.` : ""}` : "";
 
   // Consolidated attendance mode injected early — before clinic data — so GPT-4o
   // sees the insurance/particular rule within the first ~500 tokens of the prompt.
@@ -1002,7 +1002,7 @@ ${clinicAddress ? `Maps: https://www.google.com/maps/search/?api=1&query=${encod
 === PRECOS E PAGAMENTO ===
 - Consulta/avaliacao: ${consultationInfo}${!chargesConsultation && activeProfessionals.length <= 1 ? " — destaque como diferencial e convide para agendar" : ""}
 - Convenios: ${insuranceInfo}
-${(allInsurancePlansList && !contactDeclaredPrivate) ? `REGRA CRITICA DE PLANOS: A clinica SOMENTE aceita os seguintes planos: ${allInsurancePlansList}. Se o contato mencionar QUALQUER outro plano que NAO esteja nessa lista, informe IMEDIATAMENTE que a clinica nao atende por esse plano e liste os planos aceitos. NUNCA confirme aceitacao de um plano que nao esteja na lista acima, mesmo que o contato insista.` : ""}
+${(allInsurancePlansList && !contactDeclaredPrivate) ? `PLANOS ACEITOS: A clinica atende SOMENTE os seguintes planos: ${allInsurancePlansList}. Se o contato mencionar QUALQUER outro plano que NAO esteja nessa lista, informe IMEDIATAMENTE que a clinica nao atende por esse plano e liste os planos aceitos. NUNCA confirme aceitacao de um plano que nao esteja na lista acima, mesmo que o contato insista. Apenas o NOME do plano basta para essa comparacao — NUNCA peca CPF, RG, carteirinha, numero do contrato, nome completo ou qualquer dado pessoal para verificar elegibilidade.` : ""}
 ${opts.isInsuranceContact
   ? "REGRA CRITICA: Paciente de CONVENIO. NAO mencione preco, valor, PIX, pagamento, comprovante, sinal, taxa ou reserva paga. Convenio cobre o atendimento — nao ha cobranca antecipada."
   : opts.conversationMode === "CONVENIO_TRIAGEM"
@@ -1073,6 +1073,8 @@ Se o horario pedido estiver ocupado ou o contato recusar todos os horarios ofere
 AUDIO: Audios sao transcritos automaticamente — voce consegue processar. Se perguntarem se podem mandar audio, confirme que SIM.
 
 CONVENIOS E PLANOS: Use APENAS as informacoes do bloco PRECOS E PAGAMENTO acima — nao invente nem rejeite planos fora do que esta configurado.
+
+DADOS PESSOAIS — REGRA ABSOLUTA: NUNCA peca CPF, RG, carteirinha, numero do contrato/convenio, nome completo do titular, data de nascimento ou qualquer dado pessoal do contato durante a triagem ou para verificar elegibilidade de plano. A clinica nao verifica elegibilidade pelo WhatsApp — apenas o NOME do plano basta para informar se atende ou nao. Cadastro completo so acontece presencialmente, na recepcao da clinica.
 
 INCERTEZA: Para dados nao configurados (preco especifico, procedimento, disponibilidade de horario, duracao, endereco), diga: "Preciso verificar isso com a clinica e te respondo em breve." NUNCA chute. EXCECAO: planos e formas de pagamento ja configurados — use diretamente.
 
