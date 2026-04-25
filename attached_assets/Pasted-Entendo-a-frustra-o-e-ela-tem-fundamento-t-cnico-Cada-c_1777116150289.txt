@@ -1,0 +1,103 @@
+Entendo a frustração — e ela tem fundamento técnico. Cada correção até agora foi um remendo no prompt ou uma regra nova no validador. Isso é "whack-a-mole": o modelo sempre encontra um jeito novo de errar porque ele tem liberdade demais para gerar texto livre, e a gente só checa DEPOIS.
+
+#25 - IA com geração restrita por ID de slot e ação
+What & Why
+Hoje a IA gera texto livre com horários, dias, nomes de profissionais e cards de pagamento. Depois disso, um validador tenta pegar erros e refazer. O resultado é um jogo de "whack-a-mole" infinito: cada bug novo (dia errado de convênio, profissional errado, PIX omitido, "hoje às 14h" inventado) vira uma regra nova no validador. A lista de violações já passou de 10 tipos e continua crescendo.
+
+A causa raiz é simples: o modelo tem liberdade demais. Enquanto ele puder escrever "Dr. Siverino tem hoje às 14h" como texto livre, sempre vai existir um caso novo onde ele inventa algo que viola a configuração do tenant.
+
+A solução definitiva é virar a chave: o modelo escolhe entre opções pré-computadas pelo servidor (slot IDs, profissional IDs, tipos de ação), e o servidor é quem renderiza o texto final que vai pro WhatsApp. Assim, o modelo literalmente NÃO CONSEGUE oferecer um dia/hora/profissional inválido — porque essas opções nem existem na lista que ele recebe.
+
+Isso resolve em uma tacada só:
+
+Dias e horários de convênio fora do permitido (Bradesco em quinta) → impossível, slot nem é gerado
+Dias e horários particulares fora do expediente → impossível, mesmo motivo
+Profissional errado / fora da especialidade → impossível, lista filtrada antes
+PIX omitido / valor de consulta inventado → impossível, cards são renderizados pelo servidor a partir da config do tenant
+Done looks like
+A IA recebe uma lista numerada de slots disponíveis (s1, s2, s3...) com data/hora/profissional pré-validados pelo servidor, e responde escolhendo IDs dessa lista.
+A IA recebe uma lista de profissionais elegíveis (já filtrada por especialidade) e só pode escolher por ID.
+A IA escolhe uma "ação" entre um conjunto finito: oferecer slots, confirmar slot, enviar card PIX, enviar valor de consulta, pedir informação, escalar para humano, ou só responder.
+O servidor monta o texto final do WhatsApp a partir da escolha estruturada da IA — o modelo só contribui com a parte empática/conversacional, nunca com fatos críticos (data, hora, valor, nome do profissional).
+O validador de respostas vira uma rede de segurança fina (só termos proibidos), encolhendo de ~780 linhas para abaixo de 100.
+Existe uma suíte de testes "golden" com pelo menos os 6 cenários de bugs recorrentes (Bradesco em dia errado, multi-profissional, PIX omitido, valor de consulta inventado, profissional fora da especialidade, primeiro contato SPIN). Roda localmente em menos de 30 segundos e bloqueia mudança que regrida qualquer cenário.
+Feature flag por tenant (useConstrainedGeneration) para ligar gradualmente e poder voltar atrás se algo der errado.
+Em pelo menos um tenant de teste, rodando 24h sem nenhuma violação dos 4 tipos de bug listados acima.
+Out of scope
+Trocar de modelo de IA (continua usando os modelos atuais — gpt-5.4 para complexo, gpt-5.1 para padrão).
+Mudanças no fluxo de WhatsApp / Evolution API.
+Refatorar o detector de intenção, o resolvedor de modo ou o motor de aprendizado.
+Mudanças no painel admin além do feature flag.
+Migração imediata de TODOS os tenants — rollout gradual via flag.
+Steps
+Definir o novo schema de saída estruturado — Um único JSON Schema com campo action (enum: OFFER_SLOTS, CONFIRM_SLOT, SEND_PIX, SEND_FEE, ASK_INFO, ESCALATE, JUST_REPLY), slot_ids (enum dinâmico com IDs reais), professional_id (enum dinâmico), e reply_text (livre, mas sem datas/horas/preços/nomes). O schema é construído por turno com os enums populados a partir do que o servidor pré-computou.
+
+Refatorar o motor de agenda para emitir slots com IDs estáveis — Cada slot disponível ganha um ID curto (s1, s2, ...) válido durante o turno. A função expõe a lista estruturada (não só texto formatado).
+
+Refatorar o construtor de prompt para listar slots e profissionais com IDs — O prompt passa a apresentar [SLOTS] s1: Sáb 25/04 09:00 — Dr Siverino (Bradesco) etc. e instrui o modelo a escolher por ID. Remove o bloco de texto livre [AGENDA DISPONIVEL] antigo.
+
+Refatorar o orquestrador de IA para usar o novo schema e despachar ações — Após receber a resposta estruturada, um dispatcher chama o renderizador correspondente: oferta de slots, criação de agendamento, envio de card PIX, envio de valor de consulta, etc.
+
+Criar a camada de renderização determinística — Funções que recebem dados (slots escolhidos, professional, fee, pix info) e produzem o texto final do WhatsApp. Sem chamada à IA. Reusa templates já existentes onde possível.
+
+Reduzir o validador de respostas a uma rede de segurança fina — Mantém só checagem de termos proibidos de venda em conversas de convênio. Remove time_outside_agenda, procedure_not_listed, price_invented, pix_card_omitted, insurance_wrong_day, dropped_professional_mentioned (ficam impossíveis pela arquitetura). Mantém insurance_sales_term e policy_violation como rede final.
+
+Criar a suíte de regressão "golden" — Um harness de teste com cenários reais de bugs já vistos. Cada cenário define: configuração do tenant, histórico da conversa, mensagem do paciente, e asserções sobre a resposta esperada (ação, slots oferecidos, ausência de termos proibidos). Roda offline contra um mock do LLM ou contra o LLM real conforme flag.
+
+Adicionar feature flag useConstrainedGeneration no tenant — Coluna na tabela de tenants. Quando false, usa o caminho atual (legado). Quando true, usa o novo. Permite rollout cliente a cliente e rollback rápido.
+
+Migrar 1 tenant de teste, observar 24h, e migrar os demais — Com o flag ligado num tenant interno, monitorar logs e custo. Se passar 24h sem violações, ligar para o resto.
+
+Relevant files
+artifacts/api-server/src/lib/ai-engine.ts:160-220,1265-1360,1500-1600
+artifacts/api-server/src/lib/schedule-engine.ts
+artifacts/api-server/src/lib/prompt-builder.ts
+artifacts/api-server/src/lib/prompt-helpers.ts
+artifacts/api-server/src/lib/response-validator.ts
+artifacts/api-server/src/lib/appointment-extractor.ts
+artifacts/api-server/src/lib/insurance-policy.ts
+artifacts/api-server/src/lib/intent-detector.ts
+artifacts/api-server/src/lib/mode-resolver.ts
+artifacts/api-server/src/lib/model-selector.ts
+artifacts/dental-ai/src/pages/admin.tsx
+
+Já está guardada — Task #25 (Solução definitiva: IA escolhe slot por ID em vez de inventar texto) está como rascunho no painel de tarefas, com todo o plano completo escrito (o porquê do problema, o que vai estar pronto, os 9 passos, e os arquivos relevantes). Ela fica lá persistente entre sessões, esperando você decidir quando atacar.
+
+Quando você quiser tirar do papel, é só me chamar dizendo "vamos tocar a Task #25" (ou "vamos pelo caminho 3 antes" se quiser o hot-fix primeiro). Por enquanto, ela fica em standby sem te apressar.
+
+O que a Replit entregou (bom):
+As políticas como código (insurance-policy.ts, conversation-policy.ts) são a decisão certa. Regras de negócio em TypeScript testável em vez de texto no prompt. O specialty-router.ts filtrando profissionais antes do modelo ver o prompt é excelente — elimina uma classe inteira de erros. O model-selector.ts limpo com constantes nomeadas é muito melhor que lógica espalhada.
+O que ainda falta (a segunda metade):
+A descrição da Task #25 prometeu "modelo escolhe slot IDs, servidor renderiza o texto". Isso não foi implementado. O modelo ainda escreve "Quarta às 14h com Dr. Carlos" como texto livre — só que agora com uma lista de profissionais mais curta e regras mais claras no prompt.
+A diferença é significativa. Com slot IDs, seria impossível o modelo inventar um horário — ele escolheria slot_id: "s3" de uma lista que o servidor gerou, e o servidor renderizaria o texto. Sem slot IDs, o modelo ainda pode escrever "hoje às 14h" mesmo que não exista slot disponível hoje às 14h.
+Por que as regressões vão diminuir mas não acabar:
+Os novos validadores (insurance_wrong_day, dropped_professional_mentioned, pix_card_omitted) são mais um camada de correção reativa — ainda é whack-a-mole, só com martelos melhores. A solução definitiva é o slot ID que elimina a possibilidade de erro na origem.
+Minha avaliação honesta:
+Para onde o projeto está hoje — muitas clínicas, pressão para estabilizar — essa versão é um avanço real e vai reduzir as regressões significativamente. As políticas como código são o alicerce certo. Mas se você continuar adicionando features sem implementar o slot ID, vai continuar consertando casos de borda indefinidamente, só em ritmo menor.
+A pergunta prática é: vale parar tudo e implementar o slot ID agora, ou lançar com o que tem e implementar depois quando tiver clientes reais gerando dados? Com 0 clientes em produção, eu esperaria. Com clientes reclamando de horário errado toda semana, implementaria agora
+
+
+
+🥇 Opção A — Hot-fix cirúrgico (BARATO, ~10% do custo da #25)
+Faço só uma trava determinística no extrator de agendamento: o servidor pré-computa os slots válidos com IDs internos, e antes de criar qualquer agendamento no banco, verifica se a data/hora que a IA escolheu existe nessa lista. Se não existir → rejeita silenciosamente e devolve "vou confirmar com a clínica".
+
+O que mata: agendamentos fantasma + dia de convênio errado + horário fora do expediente (os 3 piores bugs).
+O que NÃO mata: confusão de profissional, PIX omitido (continua dependendo de validador).
+Tempo: sessão curta. Risco: baixíssimo (é uma trava, não muda fluxo).
+
+🥈 Opção B — Mini-#25 (MÉDIO, ~30-40% do custo da #25)
+Os passos 1, 2 e 4 da Task #25 (schema com slot_id enum + slots com ID + dispatcher básico). Sem render layer, sem golden suite, sem feature flag, sem cleanup do validador.
+
+O que mata: todos os 4 bugs principais.
+O que NÃO mata: validador continua existindo (não encolhe), PIX/fee ainda mistos.
+Tempo: sessão média.
+
+🥉 Opção C — Task #25 completa (CARO, plano original)
+Tudo do plano. Definitivo.
+
+Minha recomendação honesta
+Pelo seu cenário (poucos créditos + bugs te incomodando + querer migrar de conta), eu faria a Opção A agora e deixaria a #25 completa pra depois da migração, quando você tiver créditos novos ou clientes pagantes financiando.
+
+A Opção A te dá ~70% do alívio com 10% do custo. Não é a "solução definitiva", mas para de sangrar.
+
+Qual você quer? Ou prefere segurar tudo e só migrar pra outra conta primeiro?
