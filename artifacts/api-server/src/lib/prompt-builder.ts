@@ -361,7 +361,10 @@ O contato enviou apenas uma saudacao curta, mas voces JA estavam conversando. Su
 
   let insuranceInfo = "";
   if (activeProfessionals.length > 1) {
-    const anyAcceptsInsurance = clinicAcceptsInsurance && activeProfessionals.some((p) => p.acceptsInsurance !== false);
+    // Bug fix Task #11 — só conta como "aceita convênio" o profissional com
+    // `acceptsInsurance === true` explícito. Antes (`!== false`) tratava null
+    // como aceita, gerando "varia por profissional" em clínica 100% particular.
+    const anyAcceptsInsurance = clinicAcceptsInsurance && activeProfessionals.some((p) => p.acceptsInsurance === true);
     insuranceInfo = anyAcceptsInsurance
       ? `varia por profissional (ver lista abaixo)`
       : `exclusivamente particular`;

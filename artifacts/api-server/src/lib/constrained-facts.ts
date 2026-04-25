@@ -28,8 +28,18 @@ import { maskPhone } from "./pii-mask";
 const MAX_MEMORIES_IN_FACTS = 4;
 const MAX_FACT_CHARS = 80;
 /** Memory types reservados — controlados pelo motor restrito, não exibidos como bullets livres. */
-const RESERVED_MEMORY_TYPES = new Set(["agendamento", "ultima_oferta", "slot_offset"]);
+const RESERVED_MEMORY_TYPES = new Set([
+  "agendamento",
+  "ultima_oferta",
+  "slot_offset",
+  // Task #11 — marcador de "agenda esgotou" (paciente pediu mais opções até
+  // wrap-around). Não vira bullet livre — buildFactsBlock injeta a frase
+  // determinística "lista de horarios esgotada..." em posição fixa.
+  "slot_exhausted",
+]);
 const MAX_OFFER_OUTCOME_CHARS = 90;
+/** Task #11 — TTL do marcador slot_exhausted: 30 minutos. Após isso, expira. */
+const SLOT_EXHAUSTED_TTL_MS = 30 * 60 * 1000;
 
 /**
  * Sanitização defensiva idêntica em espírito à de ai-learning.ts:
@@ -120,6 +130,22 @@ export async function buildFactsBlock(
         .trim()
         .substring(0, MAX_OFFER_OUTCOME_CHARS);
       if (cleaned) bullets.push(`ultima oferta: ${cleaned}`);
+    }
+
+    // Task #11 — bullet de "agenda esgotada". Quando o motor detectou
+    // wrap-around da paginação no turno anterior (pagination.didReset=true)
+    // e persistiu o marcador "slot_exhausted", surface aqui (com TTL de 30min
+    // — após isso o marcador é considerado vencido e ignorado). Sem isso, a
+    // IA não sabe que o paciente já viu todas as opções e re-oferece
+    // silenciosamente os primeiros slots.
+    const slotExhausted = memories.find((m) => m.memoryType === "slot_exhausted");
+    if (slotExhausted) {
+      const ageMs = Date.now() - new Date(slotExhausted.createdAt).getTime();
+      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= SLOT_EXHAUSTED_TTL_MS) {
+        bullets.push(
+          "lista de horarios esgotada (paciente ja viu todas as opcoes desta janela; ver REGRA #7)",
+        );
+      }
     }
 
     // Dedup case-insensitive de conteúdo, preserva tipo p/ etiqueta.
@@ -584,5 +610,80 @@ export async function setSlotOffset(args: {
   }
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Task #11 — Marcador de "agenda esgotada" para sinalizar didReset à IA.
+//
+// Quando `pagination.didReset === true` no motor restrito (paciente pediu
+// mais opções até a janela esgotar e wrap-resetar), persistimos o marcador
+// "slot_exhausted" em ai_contact_memory. O `buildFactsBlock` injeta o bullet
+// determinístico no [FATOS] e o `constrained-prompt.ts` ensina a IA a
+// reconhecer (REGRA #7) — sem isso a IA reoferece silenciosamente os
+// primeiros slots e o paciente perde a confiança.
+//
+// Limpeza: chamada explícita em CONFIRM_SLOT (paciente fechou agenda) e
+// expiração natural de 30min via TTL no buildFactsBlock.
+// ──────────────────────────────────────────────────────────────────────────
+
+export async function persistSlotExhaustedSignal(args: {
+  tenantId: number;
+  contactPhone: string;
+  conversationId: number;
+}): Promise<void> {
+  const { tenantId, contactPhone, conversationId } = args;
+  if (!tenantId || !contactPhone) return;
+  try {
+    // Substitui qualquer marcador anterior — só queremos o mais recente
+    // (o TTL é medido a partir do createdAt da última versão).
+    await db
+      .delete(aiContactMemoryTable)
+      .where(
+        and(
+          eq(aiContactMemoryTable.tenantId, tenantId),
+          eq(aiContactMemoryTable.contactPhone, contactPhone),
+          eq(aiContactMemoryTable.memoryType, "slot_exhausted"),
+        ),
+      );
+    await db.insert(aiContactMemoryTable).values({
+      tenantId,
+      contactPhone,
+      memoryType: "slot_exhausted",
+      // Conteúdo é metadado interno — nunca aparece literalmente no prompt
+      // (buildFactsBlock injeta frase determinística).
+      content: "1",
+      source: "auto",
+      conversationId,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, tenantId, contactPhone: maskPhone(contactPhone), conversationId },
+      "constrained-facts: failed to persist slot_exhausted signal",
+    );
+  }
+}
+
+export async function clearSlotExhaustedSignal(args: {
+  tenantId: number;
+  contactPhone: string;
+}): Promise<void> {
+  const { tenantId, contactPhone } = args;
+  if (!tenantId || !contactPhone) return;
+  try {
+    await db
+      .delete(aiContactMemoryTable)
+      .where(
+        and(
+          eq(aiContactMemoryTable.tenantId, tenantId),
+          eq(aiContactMemoryTable.contactPhone, contactPhone),
+          eq(aiContactMemoryTable.memoryType, "slot_exhausted"),
+        ),
+      );
+  } catch (err) {
+    logger.warn(
+      { err, tenantId, contactPhone: maskPhone(contactPhone) },
+      "constrained-facts: failed to clear slot_exhausted signal",
+    );
+  }
+}
+
 // Exporta funções utilitárias usadas em testes.
-export const _internal = { ymdToBR };
+export const _internal = { ymdToBR, SLOT_EXHAUSTED_TTL_MS };

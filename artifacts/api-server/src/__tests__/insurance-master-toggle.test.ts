@@ -44,12 +44,12 @@ describe("resolveAcceptsInsurance — master toggle de convênio da clínica", (
         expect(resolveAcceptsInsurance(true, [{ acceptsInsurance: true }])).toBe(true);
       });
 
-      it("retorna true quando profissional não tem campo definido (default: aceita)", () => {
-        expect(resolveAcceptsInsurance(true, [{}])).toBe(true);
+      it("Task #11 — retorna false quando profissional não tem campo definido (default: NÃO aceita)", () => {
+        expect(resolveAcceptsInsurance(true, [{}])).toBe(false);
       });
 
-      it("retorna true quando profissional tem acceptsInsurance=null (default: aceita)", () => {
-        expect(resolveAcceptsInsurance(true, [{ acceptsInsurance: null }])).toBe(true);
+      it("Task #11 — retorna false quando profissional tem acceptsInsurance=null (default: NÃO aceita)", () => {
+        expect(resolveAcceptsInsurance(true, [{ acceptsInsurance: null }])).toBe(false);
       });
 
       it("retorna false quando profissional recusa convênio explicitamente (false)", () => {
@@ -85,22 +85,22 @@ describe("resolveAcceptsInsurance — master toggle de convênio da clínica", (
         ).toBe(false);
       });
 
-      it("retorna true quando profissional sem campo definido (default: aceita)", () => {
+      it("Task #11 — retorna false quando ninguém aceita explicitamente (false + sem campo)", () => {
         expect(
           resolveAcceptsInsurance(true, [
             { acceptsInsurance: false },
             {},
           ]),
-        ).toBe(true);
+        ).toBe(false);
       });
 
-      it("retorna true quando profissional tem acceptsInsurance=null (default: aceita)", () => {
+      it("Task #11 — retorna false quando ninguém aceita explicitamente (false + null)", () => {
         expect(
           resolveAcceptsInsurance(true, [
             { acceptsInsurance: false },
             { acceptsInsurance: null },
           ]),
-        ).toBe(true);
+        ).toBe(false);
       });
     });
 

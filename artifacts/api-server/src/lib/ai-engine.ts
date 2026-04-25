@@ -62,6 +62,9 @@ import {
 } from "./lead-engine";
 import { buildSplitPrompt } from "./prompt-builder";
 import { detectNonCoveredProcedureRouting, buildNonCoveredRoutingHint } from "./prompt-helpers";
+// Task #11 — fonte única de verdade pra cobrar/valor. Substitui lógica inline
+// duplicada em `ai-engine.ts` (incluindo o fallback hardcoded "150.00").
+import { resolveChargesConsultation, resolveConsultationFee } from "./insurance-policy";
 import { resolveConversationMode, type ConversationMode } from "./mode-resolver";
 import { isBasicPlan } from "./plan-features";
 import { normalizePlanId } from "./plan-pricing";
@@ -1068,22 +1071,26 @@ export async function processIncomingMessage(
   }
   // Task #24 — informar valor da consulta proativamente para PARTICULAR
   // (gated por chargesConsultation; consulta gratuita vira diferencial).
+  // Task #11 — passa a usar `resolveChargesConsultation`/`resolveConsultationFee`
+  // do `insurance-policy.ts` (fonte única de verdade). Removido o fallback
+  // hardcoded "150.00" — quando o tenant não tem fee configurado, NÃO
+  // promete preço; o módulo central proíbe isso explicitamente.
   if (conversationMode === "PARTICULAR_SPIN") {
     const singleProf = tenantProfessionals.length === 1 ? tenantProfessionals[0] : null;
-    const chargesC = singleProf
-      ? (singleProf.chargesConsultation !== false)
-      : (tenantSettings?.chargesConsultation !== false);
-    const fee = singleProf
-      ? (singleProf.consultationFee || tenantSettings?.consultationFee || "150.00")
-      : (tenantSettings?.consultationFee || "150.00");
     // Only inject the flat-fee hint for single-prof clinics: multi-prof clinics
     // may have different fees per professional — the per-professional listing in
     // the prompt already handles that correctly, so we avoid injecting a wrong
     // global fee here.
-    if (singleProf && chargesC && fee) {
-      systemHints.push(`[SISTEMA: Lead PARTICULAR. Ao oferecer agendamento, INFORME PROATIVAMENTE o valor da consulta (R$ ${fee}) na mesma frase da oferta de horarios — nao espere o paciente perguntar. Ex: "A consulta sai por R$ ${fee}. Tenho quarta as 10:00 ou 14:00, qual fica melhor?". PROIBIDO oferecer horario sem mencionar o valor.]`);
-    } else if (singleProf && !chargesC) {
-      systemHints.push(`[SISTEMA: Lead PARTICULAR e a consulta de avaliacao e GRATUITA nesta clinica. Destaque isso como diferencial junto com a oferta de horarios. NAO cite valor em R$ para a consulta — ela e gratuita.]`);
+    if (singleProf) {
+      const chargesC = resolveChargesConsultation(singleProf, tenantSettings ?? null);
+      const fee = resolveConsultationFee(singleProf, tenantSettings ?? null);
+      if (chargesC && fee) {
+        systemHints.push(`[SISTEMA: Lead PARTICULAR. Ao oferecer agendamento, INFORME PROATIVAMENTE o valor da consulta (R$ ${fee}) na mesma frase da oferta de horarios — nao espere o paciente perguntar. Ex: "A consulta sai por R$ ${fee}. Tenho quarta as 10:00 ou 14:00, qual fica melhor?". PROIBIDO oferecer horario sem mencionar o valor.]`);
+      } else if (!chargesC) {
+        systemHints.push(`[SISTEMA: Lead PARTICULAR e a consulta de avaliacao e GRATUITA nesta clinica. Destaque isso como diferencial junto com a oferta de horarios. NAO cite valor em R$ para a consulta — ela e gratuita.]`);
+      }
+      // chargesC=true && fee=null → sem fee configurado: não promete preço,
+      // não promete gratuidade. Silencioso é o caminho seguro.
     }
   }
 
@@ -1557,23 +1564,25 @@ export async function processIncomingMessage(
     const procedurePrices = procsForVal
       .map((p) => parseMoney(p.price ?? null))
       .filter((n): n is number => n !== null);
+    // Task #11 — usa `resolveChargesConsultation`/`resolveConsultationFee` do
+    // `insurance-policy.ts` (mesma lógica de prioridade prof→settings).
     // Include per-professional consultation fees as allowed prices so the validator
     // does not block the AI from mentioning fees configured for extra professionals.
     profsForVal.forEach((p) => {
-      if (p.chargesConsultation !== false && p.consultationFee) {
-        const fee = parseMoney(p.consultationFee);
+      if (resolveChargesConsultation(p, settingsForVal ?? null)) {
+        const fee = parseMoney(resolveConsultationFee(p, settingsForVal ?? null));
         if (fee !== null) procedurePrices.push(fee);
       }
     });
     // Use the lowest per-professional fee (or settings fee) as the primary consultationFee
     // so the validator accepts all valid per-professional prices.
     const allFees = profsForVal
-      .filter((p) => p.chargesConsultation !== false && p.consultationFee)
-      .map((p) => parseMoney(p.consultationFee!))
+      .filter((p) => resolveChargesConsultation(p, settingsForVal ?? null))
+      .map((p) => parseMoney(resolveConsultationFee(p, settingsForVal ?? null)))
       .filter((n): n is number => n !== null);
     const effectiveConsultationFee = allFees.length > 0
       ? String(Math.min(...allFees))
-      : (settingsForVal?.consultationFee != null ? String(settingsForVal.consultationFee) : null);
+      : resolveConsultationFee(null, settingsForVal ?? null);
     const valCtxBase = {
       availabilityInfo: availabilityInfoForPrompt,
       triagePending: insuranceTriagePending,
@@ -1593,7 +1602,12 @@ export async function processIncomingMessage(
       })(),
       insurancePlans: settingsForVal?.insurancePlans ?? null,
       acceptsInsurance: settingsForVal?.acceptsInsurance ?? undefined,
-      chargesConsultation: settingsForVal?.chargesConsultation ?? undefined,
+      // Task #11 — alinhar com a lógica per-prof: se QUALQUER profissional cobra,
+      // o validador deve recusar a IA prometer "consulta gratuita". Fica true
+      // se algum prof tem charges=true; cai no settings caso não haja prof.
+      chargesConsultation: profsForVal.length > 0
+        ? profsForVal.some((p) => resolveChargesConsultation(p, settingsForVal ?? null))
+        : (settingsForVal?.chargesConsultation ?? undefined),
       isInsuranceContact,
       mode: conversationMode,
       // Task #23 — em CONVENIO_TRIAGEM, a 1ª resposta pode ser puramente

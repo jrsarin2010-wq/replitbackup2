@@ -414,7 +414,11 @@ export function resolveAcceptsInsurance(
   professionals: Array<{ acceptsInsurance?: boolean | null }>,
 ): boolean {
   if (!clinicAcceptsInsurance) return false;
-  if (professionals.length === 1) return professionals[0].acceptsInsurance !== false;
-  if (professionals.length > 1) return professionals.some((p) => p.acceptsInsurance !== false);
+  // Bug fix Task #11 — só conta como "aceita convênio" quando o profissional
+  // tem `acceptsInsurance === true` explícito. null/undefined deixou de ser
+  // tratado como aceita (antes: `!== false` cobria null como aceita, fazendo
+  // a IA perguntar "plano ou particular" em clínica 100% particular).
+  if (professionals.length === 1) return professionals[0].acceptsInsurance === true;
+  if (professionals.length > 1) return professionals.some((p) => p.acceptsInsurance === true);
   return true;
 }

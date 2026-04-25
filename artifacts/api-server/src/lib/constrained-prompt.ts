@@ -190,6 +190,7 @@ ${profsBlock}
 4. slot_ids precisa ser subconjunto dos IDs listados em [SLOTS]. professional_id precisa ser ID de [PROFISSIONAIS] ou null.
 5. Se nao houver slots adequados, escolha ASK_INFO ou JUST_REPLY — NUNCA invente IDs.
 6. "request_more_slots" — use true APENAS quando o paciente recusou os horarios ja mostrados e pediu OUTRAS opcoes (ex.: "tem outro horario?", "nenhum desses"). O servidor entao paginara o proximo lote. Em qualquer outro caso, use false.
+7. AGENDA ESGOTADA: se o bullet "lista de horarios esgotada" aparecer no contexto persistente, o paciente JA viu todas as opcoes desta janela. PROIBIDO ofertar de novo os mesmos slots silenciosamente. Use ASK_INFO ou ESCALATE para reconhecer com o paciente que a agenda atual acabou e perguntar se ele quer (a) ver outra semana / (b) entrar numa lista de espera / (c) falar com a equipe da clinica. NAO use OFFER_SLOTS nesse turno.
 
 EXEMPLOS:
 - Lead pede horario:

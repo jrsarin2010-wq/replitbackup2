@@ -45,6 +45,11 @@ import {
   persistOfferSlotsRefusal,
   updateLastOfferOutcome,
   setSlotOffset,
+  // Task #11 — marcador de "agenda esgotou" para sinalizar didReset à IA
+  // via [FATOS]+REGRA #7. Persist quando wrap-around acontece;
+  // clear em CONFIRM_SLOT (paciente fechou agenda).
+  persistSlotExhaustedSignal,
+  clearSlotExhaustedSignal,
 } from "./constrained-facts";
 
 const PEAK_TIMEOUT_MS = 8_000;
@@ -460,6 +465,27 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
       contactPhone: input.contactPhone,
       conversationId: input.conversationId,
       offset: nextOffset,
+    });
+  }
+
+  // Task #11 — sinalização de "agenda esgotada" para o próximo turno.
+  // Quando o motor fez wrap-around (paciente pediu mais até estourar), grava
+  // o marcador `slot_exhausted` em ai_contact_memory; `buildFactsBlock` lê
+  // no próximo turno e injeta o bullet "lista de horarios esgotada..." que
+  // a IA reconhece via REGRA #7. Sem isso a IA reoferece silenciosamente os
+  // mesmos primeiros slots e o paciente perde a confiança.
+  // Limpamos em CONFIRM_SLOT (paciente fechou agenda) — TTL de 30min cobre
+  // os demais casos (paciente desiste, conversa muda de assunto, etc.).
+  if (pagination.didReset && parsed.action === "OFFER_SLOTS") {
+    void persistSlotExhaustedSignal({
+      tenantId: input.tenantId,
+      contactPhone: input.contactPhone,
+      conversationId: input.conversationId,
+    });
+  } else if (parsed.action === "CONFIRM_SLOT") {
+    void clearSlotExhaustedSignal({
+      tenantId: input.tenantId,
+      contactPhone: input.contactPhone,
     });
   }
 

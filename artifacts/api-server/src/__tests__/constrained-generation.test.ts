@@ -970,4 +970,143 @@ describe("constrained-facts / buildFactsBlock (post-review)", () => {
     // preferencia (livre) aparece normalmente.
     expect(facts.text).toContain("preferencia:");
   });
+
+  // ─── Task #11 — Ponto 1: acceptsInsurance null = NÃO aceita convênio ───
+
+  it("[task#11] resolveAcceptsInsurance: prof com acceptsInsurance=null NAO conta como aceita convenio", async () => {
+    const { resolveAcceptsInsurance } = await import("../lib/prompt-helpers");
+    // Clinica marca acceptsInsurance=true mas o unico prof tem null/undefined.
+    // Antes do fix: `!== false` retornava true. Depois: `=== true` retorna false.
+    expect(resolveAcceptsInsurance(true, [{ acceptsInsurance: null }])).toBe(false);
+    expect(resolveAcceptsInsurance(true, [{ acceptsInsurance: undefined }])).toBe(false);
+    expect(resolveAcceptsInsurance(true, [{}])).toBe(false);
+    // Cenario multi-prof: nenhum tem true explicito → false.
+    expect(resolveAcceptsInsurance(true, [
+      { acceptsInsurance: null },
+      { acceptsInsurance: false },
+    ])).toBe(false);
+    // Pelo menos um prof com true explicito → true.
+    expect(resolveAcceptsInsurance(true, [
+      { acceptsInsurance: null },
+      { acceptsInsurance: true },
+    ])).toBe(true);
+    // Comportamento preservado: clinica=false sempre desliga.
+    expect(resolveAcceptsInsurance(false, [{ acceptsInsurance: true }])).toBe(false);
+  });
+
+  // ─── Task #11 — Ponto 2: PARTICULAR_SPIN sem fee configurado nao promete preco ───
+
+  it("[task#11] resolveConsultationFee retorna null quando nenhum fee configurado (SEM fallback 150.00)", async () => {
+    const { resolveConsultationFee, resolveChargesConsultation } = await import("../lib/insurance-policy");
+    // Ambos null: nada a oferecer. ai-engine antes injetava "150.00" hardcoded.
+    expect(resolveConsultationFee(null, null)).toBeNull();
+    expect(resolveConsultationFee({ consultationFee: null }, { consultationFee: null })).toBeNull();
+    expect(resolveConsultationFee({ consultationFee: "" }, { consultationFee: "  " })).toBeNull();
+    // Prof tem fee → usa do prof.
+    expect(resolveConsultationFee({ consultationFee: "200" }, { consultationFee: "150" })).toBe("200");
+    // Prof sem fee, settings tem → usa settings.
+    expect(resolveConsultationFee({ consultationFee: null }, { consultationFee: "150" })).toBe("150");
+    // chargesConsultation default (ambos null) → false (regra do modulo central).
+    expect(resolveChargesConsultation(null, null)).toBe(false);
+    expect(resolveChargesConsultation({ chargesConsultation: null }, { chargesConsultation: null })).toBe(false);
+    // Explicito true em algum nivel → true.
+    expect(resolveChargesConsultation({ chargesConsultation: true }, null)).toBe(true);
+    expect(resolveChargesConsultation(null, { chargesConsultation: true })).toBe(true);
+    // Prof false sobrepoe settings true (prioridade do prof).
+    expect(resolveChargesConsultation({ chargesConsultation: false }, { chargesConsultation: true })).toBe(false);
+  });
+
+  // ─── Task #11 — Ponto 3: marcador slot_exhausted aparece em [FATOS] ───
+
+  it("[task#11] buildFactsBlock injeta bullet 'lista de horarios esgotada' quando slot_exhausted recente", async () => {
+    const dbMod = await import("@workspace/db") as any;
+    dbMod.__setQueueFor__("dentalLeads", [[null]]);
+    dbMod.__setQueueFor__("aiContactMemory", [[
+      // Marcador recém-persistido pelo motor após pagination.didReset=true.
+      { memoryType: "slot_exhausted", content: "1", editedContent: null, createdAt: new Date() },
+    ]]);
+
+    const facts = await buildFactsBlock(1, "+5511999999999", new Map());
+    expect(facts.text).toBeTruthy();
+    expect(facts.text).toContain("lista de horarios esgotada");
+    expect(facts.text).toContain("REGRA #7");
+    // Conteudo bruto "1" nunca deve vazar literalmente.
+    expect(facts.text!.split("\n").every((line) => line.trim() !== "- 1")).toBe(true);
+  });
+
+  it("[task#11] buildFactsBlock IGNORA slot_exhausted vencido (TTL > 30min)", async () => {
+    const dbMod = await import("@workspace/db") as any;
+    dbMod.__setQueueFor__("dentalLeads", [[null]]);
+    // Marcador antigo: 31 minutos atras (passou do TTL de 30min).
+    const old = new Date(Date.now() - 31 * 60 * 1000);
+    dbMod.__setQueueFor__("aiContactMemory", [[
+      { memoryType: "slot_exhausted", content: "1", editedContent: null, createdAt: old },
+    ]]);
+
+    const facts = await buildFactsBlock(1, "+5511999999999", new Map());
+    // Ignorado por TTL — sem bullet de esgotamento.
+    expect(facts.text ?? "").not.toContain("lista de horarios esgotada");
+  });
+
+  it("[task#11] buildConstrainedPrompt expoe REGRA #7 sempre (modelo precisa enxergar mesmo sem marcador)", () => {
+    const prompt = buildConstrainedPrompt(buildBasicPromptCtx());
+    expect(prompt).toContain("AGENDA ESGOTADA");
+    expect(prompt).toContain("lista de horarios esgotada");
+    expect(prompt).toMatch(/7\.\s*AGENDA ESGOTADA/);
+  });
+
+  it("[task#11] persistSlotExhaustedSignal substitui marcador anterior (delete + insert)", async () => {
+    const { persistSlotExhaustedSignal } = await import("../lib/constrained-facts");
+    const dbMod = await import("@workspace/db") as any;
+
+    const deleteCalls: any[] = [];
+    const insertCalls: any[] = [];
+    dbMod.db.delete = vi.fn(() => ({
+      where: vi.fn(async (cond: any) => { deleteCalls.push(cond); }),
+    }));
+    dbMod.db.insert = vi.fn(() => ({
+      values: vi.fn(async (rows: any) => { insertCalls.push(rows); }),
+    }));
+
+    await persistSlotExhaustedSignal({
+      tenantId: 1,
+      contactPhone: "+5511999999999",
+      conversationId: 42,
+    });
+
+    // Delete vem primeiro (idempotencia), insert vem depois.
+    expect(deleteCalls.length).toBe(1);
+    expect(insertCalls.length).toBe(1);
+    expect(insertCalls[0]).toEqual(
+      expect.objectContaining({
+        tenantId: 1,
+        contactPhone: "+5511999999999",
+        memoryType: "slot_exhausted",
+        source: "auto",
+        conversationId: 42,
+      }),
+    );
+  });
+
+  it("[task#11] clearSlotExhaustedSignal apenas deleta (sem insert)", async () => {
+    const { clearSlotExhaustedSignal } = await import("../lib/constrained-facts");
+    const dbMod = await import("@workspace/db") as any;
+
+    const deleteCalls: any[] = [];
+    const insertCalls: any[] = [];
+    dbMod.db.delete = vi.fn(() => ({
+      where: vi.fn(async (cond: any) => { deleteCalls.push(cond); }),
+    }));
+    dbMod.db.insert = vi.fn(() => ({
+      values: vi.fn(async (rows: any) => { insertCalls.push(rows); }),
+    }));
+
+    await clearSlotExhaustedSignal({
+      tenantId: 1,
+      contactPhone: "+5511999999999",
+    });
+
+    expect(deleteCalls.length).toBe(1);
+    expect(insertCalls.length).toBe(0);
+  });
 });
