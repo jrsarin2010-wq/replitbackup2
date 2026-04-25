@@ -72,7 +72,7 @@ const BASE_SETTINGS = {
   workingHoursStart:   "08:00",
   workingHoursEnd:     "18:00",
   chargesConsultation: false,
-  consultationFee:     0,
+  consultationFee:     null,
   paymentMethods:      "PIX, Cartão",
   utcOffsetHours:      -3,
   activeDays:          "1,2,3,4,5",
@@ -83,7 +83,7 @@ const BASE_SETTINGS = {
 // Profissional que aceita convênio individualmente
 const PROF_ACEITA_CONVENIO = {
   id: 1, name: "Dra. Maria", active: true, specialty: null, cro: null,
-  instagramUrl: null, chargesConsultation: false, consultationFee: 0,
+  instagramUrl: null, chargesConsultation: false, consultationFee: null,
   acceptsInsurance: true,           // ← profissional ACEITA
   insurancePlans: "Unimed, Amil",
   insuranceDays: null,

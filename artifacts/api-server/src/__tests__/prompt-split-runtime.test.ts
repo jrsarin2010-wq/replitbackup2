@@ -26,7 +26,7 @@ vi.mock("../lib/cache", () => ({
     workingHoursEnd:    "18:00",
     acceptsInsurance:   false,
     chargesConsultation: true,
-    consultationFee:    150,
+    consultationFee:    "150.00",
     paymentMethods:     "Cartão, PIX",
     utcOffsetHours:     -3,
     activeDays:         "1,2,3,4,5",
@@ -34,7 +34,7 @@ vi.mock("../lib/cache", () => ({
   getCachedProcedures:    vi.fn().mockResolvedValue([{ name: "Limpeza", price: 150 }]),
   getCachedProfessionals: vi.fn().mockResolvedValue([{
     id: 1, name: "Dr. João", active: true, specialty: null, cro: null,
-    instagramUrl: null, chargesConsultation: true, consultationFee: 150,
+    instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
     acceptsInsurance: false, insurancePlans: null, insuranceDays: null,
     defaultLeadDurationMinutes: 30, defaultPatientDurationMinutes: 30,
   }]),

@@ -45,7 +45,7 @@ vi.mock("../lib/cache", () => ({
     workingHoursEnd:    "18:00",
     acceptsInsurance:   false,
     chargesConsultation: true,
-    consultationFee:    150,
+    consultationFee:    "150.00",
     paymentMethods:     "Cartão, PIX",
     utcOffsetHours:     -3,
     activeDays:         "1,2,3,4,5",
@@ -53,7 +53,7 @@ vi.mock("../lib/cache", () => ({
   getCachedProcedures:    vi.fn().mockResolvedValue([{ name: "Limpeza", price: 150 }]),
   getCachedProfessionals: vi.fn().mockResolvedValue([{
     id: 1, name: "Dr. João", active: true, specialty: null, cro: null,
-    instagramUrl: null, chargesConsultation: true, consultationFee: 150,
+    instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
     acceptsInsurance: false, insurancePlans: null, insuranceDays: null,
     defaultLeadDurationMinutes: 30, defaultPatientDurationMinutes: 30,
   }]),
@@ -239,12 +239,12 @@ describe("Invariante #6 — Apresentacao em DUAS etapas (Task #25)", () => {
       clinicName: "Clinica Teste", aiName: "Ana", professionalName: "Dr. João",
       workingHoursStart: "08:00", workingHoursEnd: "18:00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco",
-      chargesConsultation: true, consultationFee: 150,
+      chargesConsultation: true, consultationFee: "150.00",
       paymentMethods: "Cartão, PIX", utcOffsetHours: -3, activeDays: "1,2,3,4,5",
     });
     (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       id: 1, name: "Dr. João", active: true, specialty: null, cro: null,
-      instagramUrl: null, chargesConsultation: true, consultationFee: 150,
+      instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco", insuranceDays: null,
       defaultLeadDurationMinutes: 30, defaultPatientDurationMinutes: 30,
     }]);
@@ -348,12 +348,12 @@ describe("Invariante #7 — SPIN AUSENTE quando triagem plano/particular esta pe
       clinicName: "Clinica Teste", aiName: "Ana", professionalName: "Dr. João",
       workingHoursStart: "08:00", workingHoursEnd: "18:00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco",
-      chargesConsultation: true, consultationFee: 150,
+      chargesConsultation: true, consultationFee: "150.00",
       paymentMethods: "Cartão, PIX", utcOffsetHours: -3, activeDays: "1,2,3,4,5",
     });
     (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValue([{
       id: 1, name: "Dr. João", active: true, specialty: null, cro: null,
-      instagramUrl: null, chargesConsultation: true, consultationFee: 150,
+      instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco", insuranceDays: null,
       defaultLeadDurationMinutes: 30, defaultPatientDurationMinutes: 30,
     }]);
@@ -501,12 +501,12 @@ describe("Invariante #7b — Caminhos preservados apos a triagem", () => {
       clinicName: "Clinica Teste", aiName: "Ana", professionalName: "Dr. João",
       workingHoursStart: "08:00", workingHoursEnd: "18:00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco",
-      chargesConsultation: true, consultationFee: 150,
+      chargesConsultation: true, consultationFee: "150.00",
       paymentMethods: "Cartão, PIX", utcOffsetHours: -3, activeDays: "1,2,3,4,5",
     });
     (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValue([{
       id: 1, name: "Dr. João", active: true, specialty: null, cro: null,
-      instagramUrl: null, chargesConsultation: true, consultationFee: 150,
+      instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco", insuranceDays: null,
       defaultLeadDurationMinutes: 30, defaultPatientDurationMinutes: 30,
     }]);
@@ -633,12 +633,12 @@ describe("Invariante #7b — Caminhos preservados apos a triagem", () => {
       clinicName: "Clinica Teste", aiName: "Ana", professionalName: "Dr. João",
       workingHoursStart: "08:00", workingHoursEnd: "18:00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco",
-      chargesConsultation: true, consultationFee: 150,
+      chargesConsultation: true, consultationFee: "150.00",
       paymentMethods: "Cartão, PIX", utcOffsetHours: -3, activeDays: "1,2,3,4,5",
     });
     (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValue([{
       id: 1, name: "Dr. João", active: true, specialty: null, cro: null,
-      instagramUrl: null, chargesConsultation: true, consultationFee: 150,
+      instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco", insuranceDays: null,
       defaultLeadDurationMinutes: 30, defaultPatientDurationMinutes: 30,
     }]);
@@ -692,12 +692,12 @@ describe("Invariante #9 — displayClinicName: prefixo 'Clínica' automático na
     (getCachedSettings as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       clinicName: name, aiName: "Ana", professionalName: "Dr. João",
       workingHoursStart: "08:00", workingHoursEnd: "18:00",
-      acceptsInsurance: insurance, chargesConsultation: true, consultationFee: 150,
+      acceptsInsurance: insurance, chargesConsultation: true, consultationFee: "150.00",
       paymentMethods: "Cartão, PIX", utcOffsetHours: -3, activeDays: "1,2,3,4,5",
     });
     (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       id: 1, name: "Dr. João", active: true, specialty: null, cro: null,
-      instagramUrl: null, chargesConsultation: true, consultationFee: 150,
+      instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
       acceptsInsurance: insurance, insurancePlans: null, insuranceDays: null,
       defaultLeadDurationMinutes: 30, defaultPatientDurationMinutes: 30,
     }]);
@@ -810,18 +810,18 @@ describe("Invariante #10 — Filtro de profissionais por convenio (Task #25)", (
     clinicName: "Clinica Teste", aiName: "Ana", professionalName: "Dr. João",
     workingHoursStart: "08:00", workingHoursEnd: "18:00",
     acceptsInsurance: true, insurancePlans: "Unimed, Bradesco",
-    chargesConsultation: true, consultationFee: 150,
+    chargesConsultation: true, consultationFee: "150.00",
     paymentMethods: "Cartão, PIX", utcOffsetHours: -3, activeDays: "1,2,3,4,5",
   };
   const PROF_CONVENIO = {
     id: 1, name: "Dr. Convenio", active: true, specialty: "Clinico Geral",
-    cro: null, instagramUrl: null, chargesConsultation: true, consultationFee: 150,
+    cro: null, instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
     acceptsInsurance: true, insurancePlans: "Unimed, Bradesco", insuranceDays: null,
     defaultLeadDurationMinutes: 30, defaultPatientDurationMinutes: 30,
   };
   const PROF_PARTICULAR = {
     id: 2, name: "Dr. Particular", active: true, specialty: "Estetica",
-    cro: null, instagramUrl: null, chargesConsultation: true, consultationFee: 250,
+    cro: null, instagramUrl: null, chargesConsultation: true, consultationFee: "250.00",
     acceptsInsurance: false, insurancePlans: null, insuranceDays: null,
     defaultLeadDurationMinutes: 45, defaultPatientDurationMinutes: 45,
   };

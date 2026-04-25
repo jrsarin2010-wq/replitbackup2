@@ -164,6 +164,38 @@ describe("resolveConsultationFee", () => {
   it("prof null e settings null → null (sem fallback hardcoded)", () => {
     expect(resolveConsultationFee(null, null)).toBeNull();
   });
+
+  // Task #12 — coerção defensiva conservadora
+  describe("Task #12 — coerção defensiva conservadora", () => {
+    it("number finito (legacy fixture) é convertido para string", () => {
+      const profNum = { ...profParticular, consultationFee: 150 as unknown as string };
+      expect(resolveConsultationFee(profNum, null)).toBe("150");
+    });
+
+    it("string com whitespace só → null (não vaza fee em branco)", () => {
+      const profWs = { ...profParticular, consultationFee: "   " };
+      expect(resolveConsultationFee(profWs, null)).toBeNull();
+    });
+
+    it("objeto/array NUNCA vira '[object Object]' — retorna null", () => {
+      const profObj = { ...profParticular, consultationFee: {} as unknown as string };
+      const profArr = { ...profParticular, consultationFee: [] as unknown as string };
+      expect(resolveConsultationFee(profObj, null)).toBeNull();
+      expect(resolveConsultationFee(profArr, null)).toBeNull();
+    });
+
+    it("boolean NUNCA vira 'true'/'false' — retorna null", () => {
+      const profBool = { ...profParticular, consultationFee: true as unknown as string };
+      expect(resolveConsultationFee(profBool, null)).toBeNull();
+    });
+
+    it("NaN/Infinity NÃO vira string — retorna null", () => {
+      const profNan = { ...profParticular, consultationFee: NaN as unknown as string };
+      const profInf = { ...profParticular, consultationFee: Infinity as unknown as string };
+      expect(resolveConsultationFee(profNan, null)).toBeNull();
+      expect(resolveConsultationFee(profInf, null)).toBeNull();
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -117,7 +117,7 @@ vi.mock("../lib/cache", () => ({
   getCachedProfessionals: vi.fn().mockResolvedValue([{
     id: 1, name: "Dr. João", active: true, specialty: "Clínica Geral",
     cro: null, instagramUrl: null,
-    chargesConsultation: true, consultationFee: 150,
+    chargesConsultation: true, consultationFee: "150.00",
     acceptsInsurance: true,
     insurancePlans: "Unimed, Odontoprev",
     insuranceDays: "6",
@@ -164,7 +164,7 @@ const BASE_SETTINGS = {
   workingHoursEnd:     "18:00",
   acceptsInsurance:    true,
   chargesConsultation: true,
-  consultationFee:     150,
+  consultationFee:     "150.00",
   paymentMethods:      "Cartão, PIX",
   utcOffsetHours:      -3,
   activeDays:          "1,2,3,4,5,6",

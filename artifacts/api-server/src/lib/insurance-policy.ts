@@ -99,9 +99,20 @@ export function resolveConsultationFee(
   prof: ProfessionalPolicy | null,
   settings: ClinicSettings | null,
 ): string | null {
-  if (prof?.consultationFee && prof.consultationFee.trim()) return prof.consultationFee.trim();
-  if (settings?.consultationFee && settings.consultationFee.trim()) return settings.consultationFee.trim();
-  return null;
+  // Task #12 — coerção defensiva conservadora: aceita apenas string ou number
+  // finito. Objetos, arrays, booleans, funções etc. retornam null (evita
+  // poluir o prompt com "[object Object]" ou "true"). Schema é varchar.
+  const norm = (v: unknown): string | null => {
+    if (typeof v === "string") {
+      const t = v.trim();
+      return t.length > 0 ? t : null;
+    }
+    if (typeof v === "number" && Number.isFinite(v)) {
+      return String(v);
+    }
+    return null;
+  };
+  return norm(prof?.consultationFee) ?? norm(settings?.consultationFee);
 }
 
 /**
