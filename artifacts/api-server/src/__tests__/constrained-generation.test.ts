@@ -755,6 +755,120 @@ describe("constrained-facts / buildFactsBlock (post-review)", () => {
     expect(prompt).not.toMatch(/Profissionais que ATENDEM convenio:/);
   });
 
+  // ─── Task #3 — captura de preferencias na recusa de oferta ───
+
+  it("[task#3] persistOfferSlotsRefusal extrai preferencia ('so de manha') da recusa", async () => {
+    const { persistOfferSlotsRefusal } = await import("../lib/constrained-facts");
+    const dbMod = await import("@workspace/db") as any;
+    // Memoria existente p/ dedup: vazia (nada a deduplicar).
+    dbMod.__setQueueFor__("aiContactMemory", [[]]);
+
+    const insertCalls: any[] = [];
+    dbMod.db.insert = vi.fn(() => ({ values: vi.fn(async (rows: any) => { insertCalls.push(rows); }) }));
+
+    const fakeClient = {
+      chat: {
+        completions: {
+          create: vi.fn(async () => ({
+            choices: [{ message: { content: '{"preferences":[{"content":"so pode de manha"}]}' } }],
+          })),
+        },
+      },
+    };
+
+    await persistOfferSlotsRefusal({
+      tenantId: 1,
+      contactPhone: "+5511999999999",
+      conversationId: 42,
+      userMessage: "esses horarios nao servem, so consigo de manha",
+      openaiClient: fakeClient as any,
+    });
+
+    expect(fakeClient.chat.completions.create).toHaveBeenCalledTimes(1);
+    expect(insertCalls.length).toBe(1);
+    expect(insertCalls[0]).toEqual([
+      expect.objectContaining({
+        tenantId: 1,
+        contactPhone: "+5511999999999",
+        memoryType: "preferencia",
+        content: "so pode de manha",
+        source: "auto",
+        conversationId: 42,
+      }),
+    ]);
+  });
+
+  it("[task#3] persistOfferSlotsRefusal NAO insere quando preferencia ja existe (dedup)", async () => {
+    const { persistOfferSlotsRefusal } = await import("../lib/constrained-facts");
+    const dbMod = await import("@workspace/db") as any;
+    dbMod.__setQueueFor__("aiContactMemory", [[
+      { memoryType: "preferencia", content: "so pode de manha", editedContent: null },
+    ]]);
+
+    const insertCalls: any[] = [];
+    dbMod.db.insert = vi.fn(() => ({ values: vi.fn(async (rows: any) => { insertCalls.push(rows); }) }));
+
+    const fakeClient = {
+      chat: {
+        completions: {
+          create: vi.fn(async () => ({
+            choices: [{ message: { content: '{"preferences":[{"content":"So pode de manha"}]}' } }],
+          })),
+        },
+      },
+    };
+
+    await persistOfferSlotsRefusal({
+      tenantId: 1,
+      contactPhone: "+5511999999999",
+      conversationId: 42,
+      userMessage: "ja te falei, so de manha",
+      openaiClient: fakeClient as any,
+    });
+
+    expect(insertCalls.length).toBe(0);
+  });
+
+  it("[task#3] persistOfferSlotsRefusal ignora mensagem muito curta sem chamar LLM", async () => {
+    const { persistOfferSlotsRefusal } = await import("../lib/constrained-facts");
+    const fakeClient = {
+      chat: { completions: { create: vi.fn() } },
+    };
+
+    await persistOfferSlotsRefusal({
+      tenantId: 1,
+      contactPhone: "+5511999999999",
+      conversationId: 42,
+      userMessage: "ok",
+      openaiClient: fakeClient as any,
+    });
+
+    expect(fakeClient.chat.completions.create).not.toHaveBeenCalled();
+  });
+
+  it("[task#3] persistOfferSlotsRefusal nao throw quando LLM retorna lixo", async () => {
+    const { persistOfferSlotsRefusal } = await import("../lib/constrained-facts");
+    const fakeClient = {
+      chat: {
+        completions: {
+          create: vi.fn(async () => ({
+            choices: [{ message: { content: "isso nao e json valido" } }],
+          })),
+        },
+      },
+    };
+
+    await expect(
+      persistOfferSlotsRefusal({
+        tenantId: 1,
+        contactPhone: "+5511999999999",
+        conversationId: 42,
+        userMessage: "nenhum desses serve, queria so depois das 18h",
+        openaiClient: fakeClient as any,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("nao inclui memorias reservadas (slot_offset/agendamento) como bullets livres", async () => {
     const dbMod = await import("@workspace/db") as any;
     dbMod.__setQueueFor__("dentalLeads", [[null]]);

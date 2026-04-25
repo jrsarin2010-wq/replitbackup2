@@ -42,6 +42,7 @@ import { validateConstrainedReply } from "./response-validator";
 import {
   persistConfirmSlotSignal,
   persistOfferSlotsSignal,
+  persistOfferSlotsRefusal,
   updateLastOfferOutcome,
   setSlotOffset,
 } from "./constrained-facts";
@@ -401,7 +402,22 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     currentAction: parsed.action,
     acceptedSlotId: parsed.action === "CONFIRM_SLOT" ? (parsed.slot_ids[0] ?? null) : null,
     acceptedSlotLabel: parsed.action === "CONFIRM_SLOT" ? acceptedSlotLabel : null,
-  }).then(async () => {
+  }).then(async (outcomeResult) => {
+    // Task #3 — quando a oferta anterior foi RECUSADA neste turno, extrai
+    // preferencias/restricoes implicitas da mensagem do paciente ("so de
+    // manha", "essa semana nao") e persiste como memoria "preferencia" para
+    // alimentar o [FATOS] do proximo turno. Fire-and-forget — em paralelo
+    // com a persistencia da nova oferta abaixo, ambos sao independentes.
+    if (outcomeResult.wasRefusal) {
+      void persistOfferSlotsRefusal({
+        tenantId: input.tenantId,
+        contactPhone: input.contactPhone,
+        conversationId: input.conversationId,
+        userMessage: input.userContent,
+        openaiClient: input.client,
+      });
+    }
+
     // 7c. Persistência de OFFER_SLOTS (para ver desfecho no próximo turno).
     if (parsed.action !== "OFFER_SLOTS" || parsed.slot_ids.length === 0) return;
     const offeredSlots = parsed.slot_ids

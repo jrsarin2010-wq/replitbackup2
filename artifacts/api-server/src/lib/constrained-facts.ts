@@ -18,6 +18,7 @@
  *   - Falhas NUNCA quebram a resposta da IA: tudo é try/catch com logger.warn.
  */
 
+import type { OpenAI } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
 import { dentalLeadsTable, aiContactMemoryTable } from "@workspace/db";
 import { and, eq, desc, ne } from "drizzle-orm";
@@ -334,30 +335,39 @@ export async function persistOfferSlotsSignal(args: {
  *   ESCALATE            | "recusou (escalou p/ humano)"
  *   SEND_PIX/SEND_FEE   | (mantém pendente — não é resposta sobre a oferta)
  */
+export interface UpdateLastOfferOutcomeResult {
+  /** Se houve transição de pendente → recusou (qualquer flavor). Sinaliza ao caller para extrair preferências da recusa (Task #3). */
+  wasRefusal: boolean;
+}
+
 export async function updateLastOfferOutcome(args: {
   tenantId: number;
   contactPhone: string;
   currentAction: string;
   acceptedSlotId?: string | null;
   acceptedSlotLabel?: string | null;
-}): Promise<void> {
+}): Promise<UpdateLastOfferOutcomeResult> {
   const { tenantId, contactPhone, currentAction, acceptedSlotId, acceptedSlotLabel } = args;
-  if (!tenantId || !contactPhone) return;
+  if (!tenantId || !contactPhone) return { wasRefusal: false };
 
   // Ações que não desfecham a oferta — mantemos pendente.
-  if (currentAction === "SEND_PIX" || currentAction === "SEND_FEE") return;
+  if (currentAction === "SEND_PIX" || currentAction === "SEND_FEE") return { wasRefusal: false };
 
   let outcome: string;
+  let wasRefusal = false;
   if (currentAction === "CONFIRM_SLOT") {
     outcome = acceptedSlotId
       ? `aceitou: ${acceptedSlotId}${acceptedSlotLabel ? ` (${acceptedSlotLabel})` : ""}`
       : "aceitou";
   } else if (currentAction === "OFFER_SLOTS") {
     outcome = "recusou (reofertou)";
+    wasRefusal = true;
   } else if (currentAction === "ESCALATE") {
     outcome = "recusou (escalou p/ humano)";
+    wasRefusal = true;
   } else {
     outcome = "recusou (sem reoferta)";
+    wasRefusal = true;
   }
 
   try {
@@ -374,9 +384,11 @@ export async function updateLastOfferOutcome(args: {
       .orderBy(desc(aiContactMemoryTable.createdAt))
       .limit(1);
 
-    if (!lastOffer) return;
+    if (!lastOffer) return { wasRefusal: false };
     // Só atualiza se ainda estiver pendente (evita sobrescrever decisões já registradas).
-    if (!/desfecho:\s*pendente/i.test(lastOffer.content || "")) return;
+    // Importante: se já não está pendente, não conta como recusa "deste turno"
+    // — caller não deve disparar o extractor de preferências de novo.
+    if (!/desfecho:\s*pendente/i.test(lastOffer.content || "")) return { wasRefusal: false };
 
     const newContent = (lastOffer.content || "")
       .replace(/desfecho:\s*pendente/i, `desfecho: ${outcome}`)
@@ -386,10 +398,145 @@ export async function updateLastOfferOutcome(args: {
       .update(aiContactMemoryTable)
       .set({ content: newContent })
       .where(eq(aiContactMemoryTable.id, lastOffer.id));
+
+    return { wasRefusal };
   } catch (err) {
     logger.warn(
       { err, tenantId, contactPhone: maskPhone(contactPhone), currentAction },
       "constrained-facts: failed to update last offer outcome",
+    );
+    return { wasRefusal: false };
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Task #3 — Captura de preferências a partir de RECUSA de oferta.
+//
+// Quando a IA OFERECE horários e o paciente RECUSA ("só de manhã", "essa
+// semana não dá", "quarta não consigo"), extraímos as preferências/restrições
+// implícitas e persistimos como memória do tipo "preferencia". O bloco
+// [FATOS] já passa essas memórias livres para o próximo turno, então a IA
+// para de reoferecer slots inviáveis automaticamente.
+//
+// Trigger: `runConstrainedGeneration` chama esta função APÓS
+// `updateLastOfferOutcome` retornar wasRefusal=true. Fire-and-forget: o
+// custo do gpt-5-nano é baixo (<$0.0001/chamada) e a chamada NUNCA bloqueia
+// a resposta enviada ao paciente.
+// ──────────────────────────────────────────────────────────────────────────
+
+const MAX_REFUSAL_PREFS_PER_TURN = 3;
+const MIN_REFUSAL_MSG_LEN = 4;
+const MAX_REFUSAL_MSG_LEN = 500;
+
+const REFUSAL_EXTRACTION_PROMPT = `Voce recebe a MENSAGEM de um paciente que acabou de RECUSAR horarios de consulta odontologica oferecidos pela secretaria.
+Sua tarefa e extrair as PREFERENCIAS ou RESTRICOES de horario implicitas na recusa, para que a secretaria nao reoferezca slots inviaveis no proximo turno.
+
+Exemplos de extracao (mensagem -> preferencia):
+- "so de manha" -> "so pode de manha"
+- "tarde nao da" -> "recusou: tarde"
+- "essa semana to viajando" -> "recusou: essa semana"
+- "quarta nao consigo" -> "recusou: quarta-feira"
+- "depois das 18h" -> "so pode depois das 18h"
+- "nenhum desses serve" -> NAO extraia nada (sem informacao util)
+- "ok obrigado" -> NAO extraia nada
+- "pode ser amanha?" -> NAO extraia nada (e contraproposta, nao restricao)
+
+Regras:
+- Extraia APENAS informacoes que ajudem a filtrar slots futuros (periodo do dia, dia da semana, semana, faixa de horario).
+- NAO invente. Se a recusa nao traz informacao especifica, retorne lista vazia.
+- Cada preferencia deve caber em ate 60 caracteres.
+- Maximo de 3 preferencias.
+
+Responda APENAS com JSON valido (sem markdown):
+{"preferences": [{"content": "texto curto da preferencia/restricao"}]}`;
+
+function sanitizeRefusalPref(text: string): string {
+  return text
+    .replace(/\b(system|assistant|user|SYSTEM|ASSISTANT|USER)\s*:/gi, "")
+    .replace(/ignore\s+(all\s+)?(previous|above|prior)\s+(instructions?|prompts?|rules?)/gi, "[filtrado]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .substring(0, 60);
+}
+
+/**
+ * Extrai e persiste preferencias/restricoes de horario a partir da mensagem
+ * de RECUSA do paciente. Fire-and-forget — NUNCA throw, NUNCA bloqueia a
+ * resposta ao paciente (chamado pelo engine via `void` em background).
+ *
+ * Idempotente: faz dedup case-insensitive contra memorias "preferencia"
+ * existentes do mesmo contato antes de inserir.
+ */
+export async function persistOfferSlotsRefusal(args: {
+  tenantId: number;
+  contactPhone: string;
+  conversationId: number;
+  userMessage: string;
+  openaiClient: OpenAI;
+}): Promise<void> {
+  const { tenantId, contactPhone, conversationId, userMessage, openaiClient } = args;
+  if (!tenantId || !contactPhone || !openaiClient) return;
+
+  const cleanedMsg = (userMessage || "").trim();
+  if (cleanedMsg.length < MIN_REFUSAL_MSG_LEN || cleanedMsg.length > MAX_REFUSAL_MSG_LEN) return;
+
+  try {
+    const response = await openaiClient.chat.completions.create({
+      model: "gpt-5-nano",
+      max_completion_tokens: 200,
+      temperature: 0.2,
+      messages: [
+        { role: "system", content: REFUSAL_EXTRACTION_PROMPT },
+        { role: "user", content: cleanedMsg },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content || "{}";
+    const stripped = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const parsed = JSON.parse(stripped) as { preferences?: Array<{ content?: string }> };
+
+    const prefs = (parsed.preferences || [])
+      .map((p) => (p && typeof p.content === "string" ? sanitizeRefusalPref(p.content) : ""))
+      .filter((c): c is string => !!c)
+      .slice(0, MAX_REFUSAL_PREFS_PER_TURN);
+
+    if (prefs.length === 0) return;
+
+    // Dedup contra memorias "preferencia" existentes do mesmo contato.
+    const existing = await db.query.aiContactMemoryTable.findMany({
+      where: and(
+        eq(aiContactMemoryTable.tenantId, tenantId),
+        eq(aiContactMemoryTable.contactPhone, contactPhone),
+        eq(aiContactMemoryTable.memoryType, "preferencia"),
+        ne(aiContactMemoryTable.status, "rejected"),
+      ),
+    });
+    const existingSet = new Set(
+      existing.map((e) => (e.editedContent || e.content || "").toLowerCase().trim()),
+    );
+
+    const toInsert = prefs.filter((c) => !existingSet.has(c.toLowerCase()));
+    if (toInsert.length === 0) return;
+
+    await db.insert(aiContactMemoryTable).values(
+      toInsert.map((content) => ({
+        tenantId,
+        contactPhone,
+        memoryType: "preferencia",
+        content,
+        source: "auto" as const,
+        conversationId,
+      })),
+    );
+
+    logger.info(
+      { tenantId, contactPhone: maskPhone(contactPhone), conversationId, count: toInsert.length },
+      "constrained-facts: persisted OFFER_SLOTS refusal preferences",
+    );
+  } catch (err) {
+    logger.warn(
+      { err, tenantId, contactPhone: maskPhone(contactPhone), conversationId },
+      "constrained-facts: failed to persist OFFER_SLOTS refusal preferences",
     );
   }
 }
