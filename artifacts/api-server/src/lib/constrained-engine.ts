@@ -514,6 +514,18 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   // atual; `slot_offset_used` é o ponto de partida no array bruto que o
   // turno consumiu (vindo do turno anterior); `slot_offset_next` é o que
   // será gravado para o próximo turno (0 quando reset).
+  const violationTypes = violations.map((v) => v.type);
+  // Linha de alta visibilidade — formato grep-friendly para acompanhamento
+  // operacional do caminho restrito (Task #16 follow-up). Use:
+  //   refresh_all_logs / logs do workflow + filtro "[CONSTRAINED]"
+  logger.info(
+    `[CONSTRAINED] tenant=${input.tenantId} conv=${input.conversationId} ` +
+      `action=${parsed.action} violations=[${violationTypes.join(",")}] ` +
+      `slots=${slotsShown}/${slotsAvailableTotal} prof=${parsed.professional_id ?? "-"} ` +
+      `model=${modelUsed} appt=${inlineAppointment ? "yes" : "no"} ` +
+      `latency_ms=${Date.now() - startTs}`,
+  );
+
   logger.info(
     {
       tenantId: input.tenantId,
@@ -537,7 +549,7 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
       prompt_tokens: promptTokens,
       completion_tokens: completionTokens,
       cached_tokens: cachedTokens,
-      violations: violations.map((v) => v.type),
+      violations: violationTypes,
       did_create_appointment: !!inlineAppointment,
     },
     "constrained-engine: dispatched",
