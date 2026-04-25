@@ -65,7 +65,15 @@ export interface StructuredAIResponse {
    * além dos exibidos, o próximo turno carrega slots além do offset atual
    * (paginação determinística). Quando false, o offset é resetado.
    *
-   * Pertence ao schema strict, sempre obrigatório no payload (default = false).
+   * DECISÃO DE CONTRATO (drift documentado em code review #4):
+   * O spec original da Task #25 listava este campo como opcional.
+   * Promovemos para REQUIRED no schema strict porque o JSON Schema da
+   * OpenAI com `strict: true` exige que TODOS os campos do `properties`
+   * estejam em `required` (não suporta "optional"). Manter required também
+   * elimina caminhos undefined no engine de paginação. O LLM deve sempre
+   * emitir `request_more_slots: false` salvo nos casos descritos na
+   * REGRA #6 do prompt restrito. O fallback de parse falho injeta
+   * `request_more_slots: false` para honrar o contrato.
    */
   request_more_slots: boolean;
 }
