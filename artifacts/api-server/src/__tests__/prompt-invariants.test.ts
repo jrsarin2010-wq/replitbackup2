@@ -830,12 +830,15 @@ describe("Invariante #10 — Filtro de profissionais por convenio (Task #25)", (
   function setupMocks(opts: {
     professionals: unknown[];
     insuranceConfirmed: boolean;
+    // Permite forcar temperatura "hot" quando o teste valida regras de
+    // agendamento (resolveSpinPhase so libera offerSchedule em "hot").
+    leadTemperature?: "cold" | "warm" | "hot";
   }) {
     (getCachedSettings as ReturnType<typeof vi.fn>).mockResolvedValueOnce(SETTINGS_INSURANCE);
     (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValueOnce(opts.professionals);
     (db.query.dentalLeadsTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       id: 99, tenantId: 1, name: "Maria", interest: "limpeza", source: "instagram",
-      status: "new", temperature: "warm", lastContactAt: null,
+      status: "new", temperature: opts.leadTemperature ?? "warm", lastContactAt: null,
       paymentType: opts.insuranceConfirmed ? "plano" : null, professionalId: null,
     });
     (resolveInsuranceMode as ReturnType<typeof vi.fn>).mockReturnValueOnce(
@@ -883,10 +886,24 @@ describe("Invariante #10 — Filtro de profissionais por convenio (Task #25)", (
   });
 
   it("Modo CONVENIO com so 1 prof que aceita conv: regra de agendamento usa SINGLE-PROFESSIONAL (nao multi)", async () => {
-    setupMocks({ professionals: [PROF_CONVENIO, PROF_PARTICULAR], insuranceConfirmed: true });
+    setupMocks({
+      professionals: [PROF_CONVENIO, PROF_PARTICULAR],
+      insuranceConfirmed: true,
+      leadTemperature: "hot",
+    });
+    // Lead hot precisa minExchanges=1 para offerSchedule liberar
+    const ctx = { ...LEAD_CTX_INSURANCE, messages: [{}] } as ConversationContext & { messages: unknown[] };
+    // preloadedLead bypassa o findFirst (que so tem mockOnce, e prompt-builder
+    // chama findFirst 2x — leadForPaymentType + lead do leadBlock).
+    const preloadedLead = {
+      id: 99, tenantId: 1, name: "Maria", interest: "limpeza", source: "instagram",
+      status: "new", temperature: "hot", lastContactAt: null,
+      paymentType: "plano", professionalId: null,
+    } as unknown as Parameters<typeof buildSplitPrompt>[10] extends infer O
+      ? O extends { preloadedLead?: infer L } ? L : never : never;
     const { dynamicContext } = await buildSplitPrompt(
-      1, LEAD_CTX_INSURANCE, "scheduling", "Seg 09:00 | Ter 14:00", "tenho unimed",
-      "neutral", false, 0, false, true,
+      1, ctx, "scheduling", "Seg 09:00 | Ter 14:00", "tenho unimed",
+      "neutral", false, 0, false, true, { preloadedLead },
     );
     expect(dynamicContext).toContain("AGENDA — CONVENIO (REGRA ABSOLUTA)");
     expect(dynamicContext).not.toContain("AGENDA — CONVENIO MULTI-PROFISSIONAL");
@@ -897,10 +914,18 @@ describe("Invariante #10 — Filtro de profissionais por convenio (Task #25)", (
     setupMocks({
       professionals: [PROF_CONVENIO, PROF_CONVENIO_B, PROF_PARTICULAR],
       insuranceConfirmed: true,
+      leadTemperature: "hot",
     });
+    const ctx = { ...LEAD_CTX_INSURANCE, messages: [{}] } as ConversationContext & { messages: unknown[] };
+    const preloadedLead = {
+      id: 99, tenantId: 1, name: "Maria", interest: "limpeza", source: "instagram",
+      status: "new", temperature: "hot", lastContactAt: null,
+      paymentType: "plano", professionalId: null,
+    } as unknown as Parameters<typeof buildSplitPrompt>[10] extends infer O
+      ? O extends { preloadedLead?: infer L } ? L : never : never;
     const { dynamicContext } = await buildSplitPrompt(
-      1, LEAD_CTX_INSURANCE, "scheduling", "Seg 09:00 | Ter 14:00", "tenho unimed",
-      "neutral", false, 0, false, true,
+      1, ctx, "scheduling", "Seg 09:00 | Ter 14:00", "tenho unimed",
+      "neutral", false, 0, false, true, { preloadedLead },
     );
     expect(dynamicContext).toContain("AGENDA — CONVENIO MULTI-PROFISSIONAL");
     expect(dynamicContext).toContain("APENAS as opcoes listadas em PROFISSIONAIS DA CLINICA");

@@ -251,21 +251,25 @@ describe("Cenário F — Lead Particular solicitando agendamento", () => {
       isInsurance: false, isPrivate: true, triageComplete: true,
     }));
 
-    const ctx: ConversationContext = {
+    const ctx = {
       tenantId: 1, conversationId: 10,
       contactPhone: LEAD_WARM_PRIVATE.phone,
       contactName:  "Carlos",
-      contactType:  "lead",
+      contactType:  "lead" as const,
       leadId: LEAD_WARM_PRIVATE.id,
-    };
+      // Lead WARM precisa minExchanges=2 para liberar offerSchedule
+      messages: [{}, {}],
+    } as ConversationContext & { messages: unknown[] };
 
     const r = await buildSplitPrompt(
       1, ctx, "scheduling", AGENDA,
       "quero marcar uma consulta", "neutral",
       false, 0, false, true,
-      { preloadedLead: LEAD_WARM_PRIVATE },
+      // Lead que pediu agendamento explicitamente: spinPhase precisa ser N (hot)
+      // para liberar shouldOfferSchedule e renderizar as regras de PARTICULARES
+      { preloadedLead: { ...LEAD_WARM_PRIVATE, temperature: "hot" } },
     );
-    fullPrompt = r.identity + "\n" + r.dynamicContext;
+    fullPrompt = r.identityPrompt + "\n" + r.dynamicContext;
   });
 
   it("aplica SPIN Selling completo ao lead particular", () => {
@@ -321,21 +325,24 @@ describe("Cenário G — Lead Convênio solicitando agendamento", () => {
       isInsurance: true, isPrivate: false, triageComplete: true,
     }));
 
-    const ctx: ConversationContext = {
+    const ctx = {
       tenantId: 1, conversationId: 20,
       contactPhone: LEAD_INSURANCE.phone,
       contactName:  "Fernanda",
-      contactType:  "lead",
+      contactType:  "lead" as const,
       leadId: LEAD_INSURANCE.id,
-    };
+      // Lead de convênio: bypass connectionPhase + temp warm requer 2 trocas
+      messages: [{}, {}],
+    } as ConversationContext & { messages: unknown[] };
 
     const r = await buildSplitPrompt(
       1, ctx, "scheduling", AGENDA,
       "quero agendar usando meu plano Unimed", "neutral",
       false, 0, false, true,
-      { preloadedLead: LEAD_INSURANCE },
+      // Lead pediu agendamento explicitamente: temperature hot libera o gate SPIN
+      { preloadedLead: { ...LEAD_INSURANCE, temperature: "hot" } },
     );
-    fullPrompt = r.identity + "\n" + r.dynamicContext;
+    fullPrompt = r.identityPrompt + "\n" + r.dynamicContext;
   });
 
   it("ativa MODO CONVENIO ATIVO para lead de plano", () => {
@@ -377,13 +384,15 @@ describe("Cenário H — Lead QUENTE Particular: fechamento com urgência máxim
       isInsurance: false, isPrivate: true, triageComplete: true,
     }));
 
-    const ctx: ConversationContext = {
+    const ctx = {
       tenantId: 1, conversationId: 30,
       contactPhone: LEAD_HOT_PRIVATE.phone,
       contactName:  "Bruno",
-      contactType:  "lead",
+      contactType:  "lead" as const,
       leadId: LEAD_HOT_PRIVATE.id,
-    };
+      // Lead HOT precisa minExchanges=1 para liberar offerSchedule
+      messages: [{}],
+    } as ConversationContext & { messages: unknown[] };
 
     const r = await buildSplitPrompt(
       1, ctx, "scheduling", AGENDA,
@@ -391,7 +400,7 @@ describe("Cenário H — Lead QUENTE Particular: fechamento com urgência máxim
       false, 0, false, true,
       { preloadedLead: LEAD_HOT_PRIVATE },
     );
-    fullPrompt = r.identity + "\n" + r.dynamicContext;
+    fullPrompt = r.identityPrompt + "\n" + r.dynamicContext;
   });
 
   it("fase SPIN é N — NECESSIDADE DE SOLUÇÃO para lead quente", () => {
@@ -448,7 +457,7 @@ describe("Cenário I — Paciente Cadastrado (particular) solicitando agendament
       "quero marcar uma limpeza", "neutral",
       false, 0, false, true,
     );
-    fullPrompt = r.identity + "\n" + r.dynamicContext;
+    fullPrompt = r.identityPrompt + "\n" + r.dynamicContext;
   });
 
   it("exibe o bloco PACIENTE com nome e histórico de consultas", () => {
@@ -515,7 +524,7 @@ describe("Cenário J — Paciente de Convênio: acolhimento idêntico, SPIN proi
       "preciso agendar uma consulta pelo plano", "neutral",
       false, 0, false, true,
     );
-    fullPrompt = r.identity + "\n" + r.dynamicContext;
+    fullPrompt = r.identityPrompt + "\n" + r.dynamicContext;
   });
 
   it("exibe o bloco PACIENTE com nome de paciente de convênio", () => {
@@ -579,7 +588,7 @@ describe("Cenário K — Pré-triagem: contato pede agendamento antes de declara
       true, 0, false, false,
       { preloadedLead: LEAD_UNKNOWN },
     );
-    fullPrompt = r.identity + "\n" + r.dynamicContext;
+    fullPrompt = r.identityPrompt + "\n" + r.dynamicContext;
   });
 
   it("bloqueia agendamento e pergunta plano/particular primeiro", () => {
@@ -629,32 +638,36 @@ describe("Cenário L — Validação cruzada de agendamento: particular vs conv�
     mockResolveInsuranceMode.mockReturnValue(makeMode({
       isInsurance: false, isPrivate: true, triageComplete: true,
     }));
-    const ctxPrivate: ConversationContext = {
+    const ctxPrivate = {
       tenantId: 1, conversationId: 70,
       contactPhone: LEAD_WARM_PRIVATE.phone, contactName: "Carlos",
-      contactType: "lead", leadId: LEAD_WARM_PRIVATE.id,
-    };
+      contactType: "lead" as const, leadId: LEAD_WARM_PRIVATE.id,
+      messages: [{}, {}],
+    } as ConversationContext & { messages: unknown[] };
     const privateResult = await buildSplitPrompt(
       1, ctxPrivate, "scheduling", AGENDA, "quero marcar", "neutral",
-      false, 0, false, true, { preloadedLead: LEAD_WARM_PRIVATE },
+      false, 0, false, true,
+      { preloadedLead: { ...LEAD_WARM_PRIVATE, temperature: "hot" } },
     );
-    const privatePrompt = privateResult.identity + "\n" + privateResult.dynamicContext;
+    const privatePrompt = privateResult.identityPrompt + "\n" + privateResult.dynamicContext;
 
     // ── Lead convênio ────────────────────────────────────────────────────────
     mockFindLeadFirst.mockResolvedValue(LEAD_INSURANCE);
     mockResolveInsuranceMode.mockReturnValue(makeMode({
       isInsurance: true, isPrivate: false, triageComplete: true,
     }));
-    const ctxInsurance: ConversationContext = {
+    const ctxInsurance = {
       tenantId: 1, conversationId: 71,
       contactPhone: LEAD_INSURANCE.phone, contactName: "Fernanda",
-      contactType: "lead", leadId: LEAD_INSURANCE.id,
-    };
+      contactType: "lead" as const, leadId: LEAD_INSURANCE.id,
+      messages: [{}, {}],
+    } as ConversationContext & { messages: unknown[] };
     const insuranceResult = await buildSplitPrompt(
       1, ctxInsurance, "scheduling", AGENDA, "quero agendar pelo plano", "neutral",
-      false, 0, false, true, { preloadedLead: LEAD_INSURANCE },
+      false, 0, false, true,
+      { preloadedLead: { ...LEAD_INSURANCE, temperature: "hot" } },
     );
-    const insurancePrompt = insuranceResult.identity + "\n" + insuranceResult.dynamicContext;
+    const insurancePrompt = insuranceResult.identityPrompt + "\n" + insuranceResult.dynamicContext;
 
     // ── Particular: escassez presente ───────────────────────────────────────
     expect(privatePrompt).toContain("Consegui 2 encaixes");
@@ -687,7 +700,7 @@ describe("Cenário L — Validação cruzada de agendamento: particular vs conv�
       contactType: "patient", patientId: PATIENT_PRIVATE.id,
     };
     const rP = await buildSplitPrompt(1, ctxP, "scheduling", AGENDA, "quero marcar", "neutral");
-    const particularPatientPrompt = rP.identity + "\n" + rP.dynamicContext;
+    const particularPatientPrompt = rP.identityPrompt + "\n" + rP.dynamicContext;
 
     // Paciente de convênio
     mockFindPatientFirst.mockResolvedValue(PATIENT_INSURANCE);
@@ -697,7 +710,7 @@ describe("Cenário L — Validação cruzada de agendamento: particular vs conv�
       contactType: "patient", patientId: PATIENT_INSURANCE.id,
     };
     const rI = await buildSplitPrompt(1, ctxI, "scheduling", AGENDA, "quero marcar", "neutral");
-    const insurancePatientPrompt = rI.identity + "\n" + rI.dynamicContext;
+    const insurancePatientPrompt = rI.identityPrompt + "\n" + rI.dynamicContext;
 
     const SPIN_PROIBIDO = "Nunca aplique SPIN Selling, tecnicas de venda ou pressao com pacientes";
 
