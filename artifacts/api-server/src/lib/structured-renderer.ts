@@ -212,14 +212,15 @@ function renderOfferSlots(parsed: StructuredAIResponse, ctx: RenderContext): Ren
 }
 
 function renderConfirmSlot(parsed: StructuredAIResponse, ctx: RenderContext): RenderedReply {
-  const empathy = sanitizeReplyText(parsed.reply_text, ctx);
   const slot = findSlot(ctx, parsed.slot_ids[0] ?? null);
   if (!slot) {
     // Fallback seguro: trata como ASK_INFO se o LLM esqueceu de passar slot.
+    // IMPORTANTE: NÃO usamos `empathy` aqui — o reply_text da IA pode conter
+    // uma falsa confirmação ("Perfeito, ja deixei agendado") mesmo sem slot
+    // resolvido. Sempre forçamos o texto determinístico de pergunta para
+    // evitar que o paciente acredite que agendou sem nada gravado em DB.
     return {
-      text:
-        empathy ||
-        "Pode me confirmar qual horario voce escolheu? Quero garantir que vou marcar o certo.",
+      text: "Pode me confirmar qual horario voce escolheu? Quero garantir que vou marcar o certo.",
       shouldCreateAppointment: false,
       chosenSlot: null,
       chosenProfessional: null,
@@ -232,6 +233,7 @@ function renderConfirmSlot(parsed: StructuredAIResponse, ctx: RenderContext): Re
   const marker = aptCardMarker(slot);
 
   // Frase de confirmação determinística + reply_text empático opcional do LLM.
+  const empathy = sanitizeReplyText(parsed.reply_text, ctx);
   const confirm = `Perfeito, ja deixei agendado pra ${slotStr}.`;
   const closer = "Te espero por aqui!";
 

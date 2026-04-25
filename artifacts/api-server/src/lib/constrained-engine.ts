@@ -514,7 +514,14 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   // atual; `slot_offset_used` é o ponto de partida no array bruto que o
   // turno consumiu (vindo do turno anterior); `slot_offset_next` é o que
   // será gravado para o próximo turno (0 quando reset).
-  const violationTypes = violations.map((v) => v.type);
+  const violationTypes: string[] = violations.map((v) => v.type);
+  // Violation estrutural: IA emitiu CONFIRM_SLOT mas o slot não foi resolvido
+  // (slot_id vazio ou desconhecido). O renderer já degradou para texto seguro,
+  // mas registramos no log para o operador identificar quando isso ocorre —
+  // tipicamente sinaliza upstream-skip de availability ou modelo confuso.
+  if (parsed.action === "CONFIRM_SLOT" && !inlineAppointment) {
+    violationTypes.push("confirm_slot_unresolved");
+  }
   // Linha de alta visibilidade — formato grep-friendly para acompanhamento
   // operacional do caminho restrito (Task #16 follow-up). Use:
   //   refresh_all_logs / logs do workflow + filtro "[CONSTRAINED]"
