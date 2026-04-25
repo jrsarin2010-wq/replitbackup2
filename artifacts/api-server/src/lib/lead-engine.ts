@@ -143,7 +143,7 @@ export const INSURANCE_DECLARED_PATTERN = /\b(no\s*plano|com\s*plano|pelo\s*plan
 // is detected separately via `isBareParticularAnswer` and handled
 // contextually by ai-engine.ts when the previous AI message asked the
 // triage question.
-export const PRIVATE_DECLARED_PATTERN = /\b(?:(?:sou|[eé]|ser[aá]|vai\s+ser|fica|ficar[aá]|vou(?:\s+(?:de|ir|pagar|fazer))?|vamos|pago|paga|pagar|pagarei|fa[cç]o|prefiro)\s+particular|particular\s+mesm[ao]|sem\s+(?:plano|conv[eê]nio)|n[aã]o\s+(?:tenho|uso)\s+(?:plano|conv[eê]nio)|por\s+conta\s+pr[oó]pria)\b/i;
+export const PRIVATE_DECLARED_PATTERN = /(?<![\p{L}\p{N}_])(?:(?:sou|[eé]|ser[aá]|vai\s+ser|fica|ficar[aá]|vou(?:\s+(?:de|ir|pagar|fazer))?|vamos|pago|paga|pagar|pagarei|fa[cç]o|prefiro)\s+particular|particular\s+mesm[ao]|sem\s+(?:plano|conv[eê]nio)|n[aã]o\s+(?:tenho|uso)\s+(?:plano|conv[eê]nio)|por\s+conta\s+pr[oó]pria)(?![\p{L}\p{N}_])/iu;
 
 /**
  * True when the message is just the word "particular" (with optional

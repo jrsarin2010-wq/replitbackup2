@@ -1658,15 +1658,21 @@ export async function processIncomingMessage(
       // Cost-opt: violações cosméticas (não afetam corretude de agendamento/preço)
       // não disparam retry nem fallback determinístico — só ficam logadas. Isso
       // economiza ~1 chamada extra ao modelo por violação cosmética sem degradar UX.
-      // policy_violation foi removido daqui — em modo CONVENIO_AGENDAR ele
-      // pega a IA enviando preço/PIX/cobrança proibida pelo convênio e isso
-      // PRECISA disparar retry (ou fallback determinístico). Ignorar custaria
-      // confiança da clínica e violaria regra contratual com convênios.
-      const SOFT_VIOLATIONS = new Set<string>([
+      //
+      // policy_violation é cosmético APENAS em modos não-convênio
+      // (PARTICULAR_SPIN, PACIENTE_AGENDAR). Em CONVENIO_AGENDAR/CONVENIO_TRIAGEM
+      // continua hard-block — lá representa risco contratual real (preço/PIX
+      // proibidos pelo convênio). Fora de convênio, a violação fica registrada
+      // pra auditoria mas não gasta token retentando.
+      const ALWAYS_SOFT = new Set<string>([
         "insurance_sales_term",
         "owner_title_wrong",
       ]);
-      const allSoft = violations.every((v) => SOFT_VIOLATIONS.has(v.type));
+      const isInsuranceMode =
+        conversationMode === "CONVENIO_AGENDAR" || conversationMode === "CONVENIO_TRIAGEM";
+      const isSoftViolation = (v: { type: string }): boolean =>
+        ALWAYS_SOFT.has(v.type) || (v.type === "policy_violation" && !isInsuranceMode);
+      const allSoft = violations.every(isSoftViolation);
       if (allSoft) {
         logger.info(
           { tenantId, conversationId, intent, violations: violationTypes, model_used: aiModel },
