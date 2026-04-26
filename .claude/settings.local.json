@@ -3,7 +3,9 @@
     "allow": [
       "Bash(grep -rn \"\\\\.returning\\(\\)\\\\|\\\\.returning$\" /home/runner/workspace/artifacts/api-server/src --include=\"*.ts\" -A 1)",
       "Bash(pnpm --filter @workspace/api-server test)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(printenv DATABASE_URL)",
+      "Bash(awk NR>=1390 && NR<=1420 *)"
     ]
   }
 }
