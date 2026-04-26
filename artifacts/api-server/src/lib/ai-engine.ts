@@ -1353,7 +1353,6 @@ export async function processIncomingMessage(
       topicResumeHint,
       systemHints,
       alreadyUsedTokens,
-      clinicAcceptsInsurance,
       conversationMode,
       isInsuranceContact,
       professionalsOverride: professionalsOverride ?? undefined,

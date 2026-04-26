@@ -10,8 +10,8 @@ import {
   buildPortfolioSection,
   buildDentalSpecialtySection,
   buildPixInstructionsSection,
-  resolveAcceptsInsurance,
   computeEarlyInsuranceModeSection,
+  clinicEffectivelyAcceptsInsurance,
 } from "./prompt-helpers";
 export { computeEarlyInsuranceModeSection, resolveAcceptsInsurance } from "./prompt-helpers";
 import type { Intent } from "./schedule-engine";
@@ -72,10 +72,6 @@ export interface BuildSystemPromptOptions {
   /** Estimated tokens already used by identity prompt + history + user content.
    *  Used by the dynamic-context trimmer to compute a tighter budget. */
   alreadyUsedTokens?: number;
-  /** Pre-computed clinicAcceptsInsurance from ai-engine (settings OR any professional).
-   *  When provided, used as the single source of truth — avoids recalculating
-   *  here and diverging from what ai-engine already decided for triage/scheduling. */
-  clinicAcceptsInsurance?: boolean;
   /** Task #17 — modo de conversa determinístico. Quando presente, injeta um
    *  bloco MODO_ATIVO no início do dynamicContext com diretrizes específicas
    *  daquele modo (sem trocar o prompt-base — apenas reforça o foco). */
@@ -278,9 +274,7 @@ O contato enviou apenas uma saudacao curta, mas voces JA estavam conversando. Su
   // hardcoded de R$150 e garante que null/undefined = NÃO cobra.
   const chargesConsultation = resolveChargesConsultation(singleProfessional ?? null, settings ?? null);
   const consultationFee = resolveConsultationFee(singleProfessional ?? null, settings ?? null);
-  const clinicAcceptsInsurance =
-    opts.clinicAcceptsInsurance ?? (settings?.acceptsInsurance === true);
-  const acceptsInsurance = resolveAcceptsInsurance(clinicAcceptsInsurance, activeProfessionals);
+  const acceptsInsurance = clinicEffectivelyAcceptsInsurance(settings, activeProfessionals);
 
   const insurancePlans = singleProfessional
     ? (singleProfessional.insurancePlans || settings?.insurancePlans || "")
@@ -366,7 +360,7 @@ O contato enviou apenas uma saudacao curta, mas voces JA estavam conversando. Su
     // Bug fix Task #11 — só conta como "aceita convênio" o profissional com
     // `acceptsInsurance === true` explícito. Antes (`!== false`) tratava null
     // como aceita, gerando "varia por profissional" em clínica 100% particular.
-    const anyAcceptsInsurance = clinicAcceptsInsurance && activeProfessionals.some((p) => p.acceptsInsurance === true);
+    const anyAcceptsInsurance = acceptsInsurance;
     insuranceInfo = anyAcceptsInsurance
       ? `varia por profissional (ver lista abaixo)`
       : `exclusivamente particular`;

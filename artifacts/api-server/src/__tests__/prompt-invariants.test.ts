@@ -351,7 +351,7 @@ describe("Invariante #7 — SPIN AUSENTE quando triagem plano/particular esta pe
       chargesConsultation: true, consultationFee: "150.00",
       paymentMethods: "Cartão, PIX", utcOffsetHours: -3, activeDays: "1,2,3,4,5",
     });
-    (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValue([{
+    (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       id: 1, name: "Dr. João", active: true, specialty: null, cro: null,
       instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco", insuranceDays: null,
@@ -504,7 +504,7 @@ describe("Invariante #7b — Caminhos preservados apos a triagem", () => {
       chargesConsultation: true, consultationFee: "150.00",
       paymentMethods: "Cartão, PIX", utcOffsetHours: -3, activeDays: "1,2,3,4,5",
     });
-    (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValue([{
+    (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       id: 1, name: "Dr. João", active: true, specialty: null, cro: null,
       instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco", insuranceDays: null,
@@ -636,7 +636,7 @@ describe("Invariante #7b — Caminhos preservados apos a triagem", () => {
       chargesConsultation: true, consultationFee: "150.00",
       paymentMethods: "Cartão, PIX", utcOffsetHours: -3, activeDays: "1,2,3,4,5",
     });
-    (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValue([{
+    (getCachedProfessionals as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       id: 1, name: "Dr. João", active: true, specialty: null, cro: null,
       instagramUrl: null, chargesConsultation: true, consultationFee: "150.00",
       acceptsInsurance: true, insurancePlans: "Unimed, Bradesco", insuranceDays: null,
