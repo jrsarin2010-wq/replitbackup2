@@ -24,3 +24,6 @@ echo "Remote 'origin' configurado: https://github.com/${GITHUB_USER}/${GITHUB_RE
 echo ""
 echo "Para verificar: git remote -v"
 echo "Para fazer push: git push origin main"
+
+# Reinstala o hook post-commit (auto-push para GitHub após cada commit)
+bash scripts/install-hooks.sh 2>/dev/null || true
