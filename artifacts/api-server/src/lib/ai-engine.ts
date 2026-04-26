@@ -1244,6 +1244,10 @@ export async function processIncomingMessage(
   let constrainedViolations: string[] = [];
 
   if (useConstrainedGeneration) {
+    logger.info(
+      { tenantId, conversationId, path: "constrained_v25" },
+      "[TASK25] Using CONSTRAINED generation path",
+    );
     // ── Caminho RESTRITO (Task #25) ─────────────────────────────────────────
     const { runConstrainedGeneration } = await import("./constrained-engine");
     const { buildFactsBlock, getSlotOffset } = await import("./constrained-facts");
@@ -1339,6 +1343,10 @@ export async function processIncomingMessage(
       inlineAppointment = null;
     }
   } else {
+    logger.info(
+      { tenantId, conversationId, path: "legacy" },
+      "[TASK25] Using LEGACY generation path",
+    );
   // ── Caminho LEGADO ───────────────────────────────────────────────────────
   // ── Build split prompt ───────────────────────────────────────────────────────
   const { identityPrompt, dynamicContext } = await buildSplitPrompt(
