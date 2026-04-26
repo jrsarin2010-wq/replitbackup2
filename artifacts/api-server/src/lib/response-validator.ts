@@ -820,5 +820,19 @@ export function validateConstrainedReply(
       out.push({ type: "insurance_sales_term", detail: t });
     }
   }
+
+  // Bloqueio de vazamento: clínica não aceita plano e a IA mencionou
+  // plano/convênio na resposta. Defesa de última camada — mesmo que o
+  // prompt falhe, esta validação impede o vazamento de chegar ao paciente.
+  if (opts.clinicAcceptsAnyInsurance === false) {
+    const planMentionRegex = /\b(plano|planos|conv[eê]nio|conv[eê]nios|reembolso|reembolsa|bradesco|amil|unimed|sulam[eé]rica|hapvida|notredame|gndi|porto seguro|allianz|cassi|petrobras|geap|cabesp)\b/i;
+    if (planMentionRegex.test(reply)) {
+      const match = reply.match(planMentionRegex);
+      out.push({
+        type: "insurance_mention_when_not_accepted",
+        detail: match ? match[0] : "menção a plano",
+      });
+    }
+  }
   return out;
 }

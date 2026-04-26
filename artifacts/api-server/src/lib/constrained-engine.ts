@@ -39,6 +39,7 @@ import {
   type RenderContext,
 } from "./structured-renderer";
 import { validateConstrainedReply } from "./response-validator";
+import { clinicEffectivelyAcceptsInsurance } from "./prompt-helpers";
 import {
   persistConfirmSlotSignal,
   persistOfferSlotsSignal,
@@ -490,9 +491,15 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   }
 
   // 8. Validação fina (apenas termos proibidos) + ENFORCEMENT ─────────────
+  // Reaproveita a fonte da verdade definida no fix anterior.
+  const clinicAcceptsAnyInsurance = clinicEffectivelyAcceptsInsurance(
+    null, // settings.acceptsInsurance é ignorado por design
+    input.professionals,
+  );
   const violations = validateConstrainedReply(renderedRaw.text, {
     isInsuranceContact: input.isInsuranceContact,
     insurancePlans: input.insurancePlans ?? null,
+    clinicAcceptsAnyInsurance,
   });
 
   // Se houver violações, o renderer substitui o texto por um fallback seguro
