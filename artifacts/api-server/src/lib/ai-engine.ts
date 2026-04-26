@@ -61,7 +61,7 @@ import {
   shouldSuppressAgendaForTriage,
 } from "./lead-engine";
 import { buildSplitPrompt } from "./prompt-builder";
-import { detectNonCoveredProcedureRouting, buildNonCoveredRoutingHint } from "./prompt-helpers";
+import { detectNonCoveredProcedureRouting, buildNonCoveredRoutingHint, clinicEffectivelyAcceptsInsurance } from "./prompt-helpers";
 // Task #11 — fonte única de verdade pra cobrar/valor. Substitui lógica inline
 // duplicada em `ai-engine.ts` (incluindo o fallback hardcoded "150.00").
 import { resolveChargesConsultation, resolveConsultationFee } from "./insurance-policy";
@@ -463,9 +463,7 @@ export async function processIncomingMessage(
     getCachedSettings(tenantId),
     getCachedProfessionals(tenantId),
   ]);
-  const clinicAcceptsInsurance =
-    tenantSettings?.acceptsInsurance === true ||
-    tenantProfessionals.some((p) => p.acceptsInsurance === true);
+  const clinicAcceptsInsurance = clinicEffectivelyAcceptsInsurance(tenantSettings, tenantProfessionals);
 
   let isInsuranceContact = false;
   // Persisted paymentType — captured at higher scope so the triage check can
