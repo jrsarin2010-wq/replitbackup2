@@ -422,3 +422,13 @@ export function resolveAcceptsInsurance(
   if (professionals.length > 1) return professionals.some((p) => p.acceptsInsurance === true);
   return true;
 }
+
+// Fonte única da verdade: a clínica "efetivamente aceita plano" se e somente se
+// pelo menos um profissional ativo tiver acceptsInsurance===true.
+// settings.acceptsInsurance é legado e deve ser ignorado.
+export function clinicEffectivelyAcceptsInsurance(
+  _settings: { acceptsInsurance?: boolean | null } | null | undefined,
+  activeProfessionals: Array<{ acceptsInsurance?: boolean | null }>,
+): boolean {
+  return activeProfessionals.some((p) => p.acceptsInsurance === true);
+}
