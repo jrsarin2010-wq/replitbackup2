@@ -18,6 +18,7 @@ cat > "$HOOKS_DIR/post-commit" << 'EOF'
 # Auto-push para GitHub após cada commit (Claude Code ou Replit Agent)
 REPO_MAIN="https://x-access-token:${GITHUB_RAILWAY_TOKEN}@github.com/jrsarin2010-wq/ReplitRailway.git"
 REPO_BACKUP="https://x-access-token:${GITHUB_RAILWAY_TOKEN}@github.com/jrsarin2010-wq/replirailwaybackup.git"
+REPO_BACKUP2="https://x-access-token:${GITHUB_RAILWAY_TOKEN}@github.com/jrsarin2010-wq/replitbackup2.git"
 
 if [ -z "$GITHUB_RAILWAY_TOKEN" ]; then
   echo "⚠️  [post-commit] GITHUB_RAILWAY_TOKEN não encontrado — push automático ignorado."
@@ -28,8 +29,10 @@ echo "🔄 [post-commit] Enviando para GitHub..."
 
 git push --force "$REPO_MAIN" HEAD:main 2>&1 && echo "✅ ReplitRailway atualizado." || echo "❌ Falha no ReplitRailway."
 git push --force "$REPO_BACKUP" HEAD:main 2>&1 && echo "✅ replirailwaybackup atualizado." || echo "❌ Falha no replirailwaybackup."
+git push --force "$REPO_BACKUP2" HEAD:main 2>&1 && echo "✅ replitbackup2 atualizado." || echo "❌ Falha no replitbackup2."
 EOF
 
 chmod +x "$HOOKS_DIR/post-commit"
+bash "$HOOKS_DIR/post-commit" 2>/dev/null; true
 
-echo "✅ Hook post-commit instalado — todo commit será enviado automaticamente ao GitHub."
+echo "✅ Hook post-commit instalado — todo commit será enviado automaticamente ao GitHub (3 repos)."
