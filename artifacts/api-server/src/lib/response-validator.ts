@@ -796,13 +796,22 @@ export function deterministicFallback(
 export interface ConstrainedValidationOptions {
   isInsuranceContact: boolean;
   insurancePlans?: string | null;
+  /** NOVO: true se ≥1 profissional ATIVO aceita plano. Quando false,
+   *  validador bloqueia qualquer menção a plano/convênio na resposta. */
+  clinicAcceptsAnyInsurance?: boolean;
 }
 
 export function validateConstrainedReply(
   reply: string,
   opts: ConstrainedValidationOptions,
-): Array<{ type: "insurance_sales_term"; detail: string }> {
-  const out: Array<{ type: "insurance_sales_term"; detail: string }> = [];
+): Array<
+  | { type: "insurance_sales_term"; detail: string }
+  | { type: "insurance_mention_when_not_accepted"; detail: string }
+> {
+  const out: Array<
+    | { type: "insurance_sales_term"; detail: string }
+    | { type: "insurance_mention_when_not_accepted"; detail: string }
+  > = [];
   if (!reply || !reply.trim()) return out;
 
   if (opts.isInsuranceContact) {
