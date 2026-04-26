@@ -6,12 +6,12 @@
  * comportamentos, os testes falham ANTES de chegar em produção.
  *
  * ═══════════════════════════════════════════════════════════════════════
- * BUG #A — Duas fontes de verdade para clinicAcceptsInsurance
+ * BUG #A — OR entre settings e profissionais vazava clinicAcceptsInsurance
  *
- *   CENÁRIO DO BUG: settings.acceptsInsurance=false + profissional.acceptsInsurance=true
- *   PROBLEMA:       ai-engine retornava TRUE, prompt-builder retornava FALSE
- *   CONSEQUÊNCIA:   IA tratava paciente de convênio como particular (SPIN, escassez)
- *   CORREÇÃO:       ai-engine passa clinicAcceptsInsurance via opts para buildSplitPrompt
+ *   CENÁRIO DO BUG: settings.acceptsInsurance=true + nenhum profissional aceita convênio
+ *   PROBLEMA:       OR entre settings || profissionais → TRUE mesmo sem profissional real
+ *   CONSEQUÊNCIA:   IA oferecia atendimento por plano onde não havia, inventava "reembolso"
+ *   CORREÇÃO:       clinicEffectivelyAcceptsInsurance() ignora settings; só profissionais
  *
  * ═══════════════════════════════════════════════════════════════════════
  * BUG #B — Termos de venda não bloqueados em tempo real para convênio
@@ -104,98 +104,70 @@ const CONTEXT: ConversationContext = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BUG #A — clinicAcceptsInsurance: fonte única de verdade
+// BUG #A — clinicEffectivelyAcceptsInsurance: fonte única de verdade = profissionais
+//
+// BUG REAL: settings.acceptsInsurance=true + nenhum profissional aceita convênio
+//   → OR entre settings e profissionais → clinicAcceptsInsurance=true vazou
+//   → modo CONVENIO_TRIAGEM ativado → prompt injetava "A clínica aceita plano"
+//   → LLM recebia contradição (aceita mas sem config real) → inventava "reembolso"
+// Fix: clinicEffectivelyAcceptsInsurance ignora settings completamente.
+//   A clínica só aceita plano se ≥1 profissional ativo tiver acceptsInsurance===true.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("BUG #A — clinicAcceptsInsurance: fonte única de verdade via opts", () => {
-  it("quando opts.clinicAcceptsInsurance=true, prompt contém MODO CONVENIO mesmo com settings.acceptsInsurance=false", async () => {
+describe("BUG #A — clinicEffectivelyAcceptsInsurance: fonte única de verdade = profissionais ativos", () => {
+  it("quando profissional tem acceptsInsurance=true: prompt contém MODO CONVENIO (settings.acceptsInsurance ignorado)", async () => {
     const { getCachedSettings, getCachedProfessionals, getCachedProcedures } =
       await import("../lib/cache.js");
 
+    // settings.acceptsInsurance=false mas profissional aceita — deve aceitar
     vi.mocked(getCachedSettings).mockResolvedValue(BASE_SETTINGS as any);
     vi.mocked(getCachedProfessionals).mockResolvedValue([PROF_ACEITA_CONVENIO] as any);
     vi.mocked(getCachedProcedures).mockResolvedValue([]);
 
-    // Simula o comportamento do ai-engine: calcula TRUE (settings OR profissional)
-    // e passa via opts — isso é a correção do Bug #A
     const { identityPrompt, dynamicContext } = await buildSplitPrompt(
       1, CONTEXT, "scheduling", "Seg 09:00 | Ter 14:00",
       "quero agendar pelo meu plano", "neutral", false, 0, false, true,
-      {
-        clinicAcceptsInsurance: true,  // ← ai-engine passou TRUE corretamente
-      },
     );
 
     const fullPrompt = identityPrompt + dynamicContext;
 
-    // O prompt DEVE conter modo convênio — porque clinicAcceptsInsurance=true foi passado
     expect(fullPrompt).toMatch(/MODO CONVENIO ATIVO|convenio|plano/i);
-
-    // O prompt NÃO deve conter SPIN selling — convênio não usa técnicas de venda
     expect(fullPrompt).not.toMatch(/METODOLOGIA SPIN SELLING|ESTRATEGIAS ATIVAS/i);
   });
 
-  it("quando opts.clinicAcceptsInsurance=false, prompt NÃO contém MODO CONVENIO mesmo com profissional aceitando", async () => {
+  it("CENÁRIO DO BUG REAL: settings.acceptsInsurance=true mas nenhum profissional aceita → prompt NÃO contém MODO CONVENIO", async () => {
+    // Este é o bug original: o OR entre settings e profissionais vazava TRUE
+    // mesmo quando NENHUM profissional aceitava convênio.
     const { getCachedSettings, getCachedProfessionals, getCachedProcedures } =
       await import("../lib/cache.js");
 
-    vi.mocked(getCachedSettings).mockResolvedValue(BASE_SETTINGS as any);
-    vi.mocked(getCachedProfessionals).mockResolvedValue([PROF_ACEITA_CONVENIO] as any);
-    vi.mocked(getCachedProcedures).mockResolvedValue([]);
-
-    const { identityPrompt, dynamicContext } = await buildSplitPrompt(
-      1, CONTEXT, "scheduling", "Seg 09:00 | Ter 14:00",
-      "quero agendar", "neutral", false, 0, false, true,
-      {
-        clinicAcceptsInsurance: false,  // ← master toggle desligado
-      },
-    );
-
-    const fullPrompt = identityPrompt + dynamicContext;
-
-    // Não deve conter modo convênio — master toggle está desligado
-    expect(fullPrompt).not.toMatch(/MODO CONVENIO ATIVO/i);
-  });
-
-  it("sem opts.clinicAcceptsInsurance, faz fallback para cálculo local (compatibilidade)", async () => {
-    const { getCachedSettings, getCachedProfessionals, getCachedProcedures } =
-      await import("../lib/cache.js");
-
-    // Settings com acceptsInsurance=true para que o cálculo local funcione
     vi.mocked(getCachedSettings).mockResolvedValue({
       ...BASE_SETTINGS,
-      acceptsInsurance: true,
+      acceptsInsurance: true,  // settings LIGADO — mas deve ser ignorado
     } as any);
-    vi.mocked(getCachedProfessionals).mockResolvedValue([PROF_ACEITA_CONVENIO] as any);
+    vi.mocked(getCachedProfessionals).mockResolvedValue([
+      { ...PROF_ACEITA_CONVENIO, acceptsInsurance: false },  // profissional NÃO aceita
+    ] as any);
     vi.mocked(getCachedProcedures).mockResolvedValue([]);
 
-    // Sem clinicAcceptsInsurance no opts — deve calcular localmente
     const { identityPrompt, dynamicContext } = await buildSplitPrompt(
       1, CONTEXT, "scheduling", "Seg 09:00",
       "quero agendar", "neutral", false, 0, false, true,
-      // sem clinicAcceptsInsurance no opts
     );
 
     const fullPrompt = identityPrompt + dynamicContext;
 
-    // Deve funcionar normalmente com o cálculo local
-    expect(typeof fullPrompt).toBe("string");
-    expect(fullPrompt.length).toBeGreaterThan(100);
+    // NÃO deve oferecer convênio — nenhum profissional aceita
+    expect(fullPrompt).not.toMatch(/MODO CONVENIO ATIVO/i);
+    expect(fullPrompt).not.toContain("TRIAGEM PLANO/PARTICULAR PENDENTE");
   });
 
-  it("CENÁRIO EXATO DO BUG: settings=false + profissional=true + opts=true → MODO CONVENIO ativo", async () => {
-    // Este teste reproduz exatamente o cenário que causava o bug:
-    // - Clínica com master toggle DESLIGADO (settings.acceptsInsurance=false)
-    // - Profissional ACEITA convênio individualmente
-    // - ai-engine calcula TRUE e passa via opts
-    // ANTES DA CORREÇÃO: prompt-builder ignorava opts e recalculava → FALSE → bug
-    // DEPOIS DA CORREÇÃO: prompt-builder usa opts → TRUE → comportamento correto
-
+  it("profissional aceita + settings=false: profissional manda, clínica ACEITA", async () => {
     const { getCachedSettings, getCachedProfessionals, getCachedProcedures } =
       await import("../lib/cache.js");
 
     vi.mocked(getCachedSettings).mockResolvedValue({
       ...BASE_SETTINGS,
-      acceptsInsurance: false,  // master toggle DESLIGADO
+      acceptsInsurance: false,  // settings DESLIGADO — deve ser ignorado
     } as any);
     vi.mocked(getCachedProfessionals).mockResolvedValue([
       { ...PROF_ACEITA_CONVENIO, acceptsInsurance: true },  // profissional ACEITA
@@ -205,18 +177,11 @@ describe("BUG #A — clinicAcceptsInsurance: fonte única de verdade via opts", 
     const { identityPrompt, dynamicContext } = await buildSplitPrompt(
       1, CONTEXT, "scheduling", "Seg 09:00",
       "quero agendar pelo unimed", "neutral", false, 0, false, true,
-      {
-        // ai-engine calculou: false || true = TRUE e passou aqui
-        clinicAcceptsInsurance: true,
-      },
     );
 
     const fullPrompt = identityPrompt + dynamicContext;
 
-    // DEVE ter modo convênio — o ai-engine mandou TRUE
     expect(fullPrompt).toMatch(/MODO CONVENIO ATIVO|convenio|plano/i);
-
-    // NÃO DEVE ter SPIN — convênio não usa técnicas de venda
     expect(fullPrompt).not.toContain("METODOLOGIA SPIN SELLING");
     expect(fullPrompt).not.toContain("ESTRATEGIAS ATIVAS");
   });
@@ -356,11 +321,9 @@ describe("Regressão combinada — Bug #A + Bug #B juntos", () => {
     ] as any);
     vi.mocked(getCachedProcedures).mockResolvedValue([]);
 
-    // Bug #A: prompt deve reconhecer convênio quando ai-engine passa TRUE
     const { identityPrompt, dynamicContext } = await buildSplitPrompt(
       1, CONTEXT, "scheduling", "Seg 09:00",
       "quero marcar pelo plano", "neutral", false, 0, false, true,
-      { clinicAcceptsInsurance: true },
     );
     const fullPrompt = identityPrompt + dynamicContext;
     expect(fullPrompt).toMatch(/MODO CONVENIO ATIVO|convenio|plano/i);
@@ -404,7 +367,6 @@ describe("Task #9 — insuranceBifurcationBlock menciona planos na pergunta", ()
     const { identityPrompt, dynamicContext } = await buildSplitPrompt(
       1, CONTEXT, "scheduling", "Seg 09:00 | Ter 14:00",
       "oi quero marcar consulta", "neutral", false, 0, false, true,
-      { clinicAcceptsInsurance: true },
     );
 
     const fullPrompt = identityPrompt + dynamicContext;
@@ -432,7 +394,6 @@ describe("Task #9 — insuranceBifurcationBlock menciona planos na pergunta", ()
     const { identityPrompt, dynamicContext } = await buildSplitPrompt(
       1, CONTEXT, "scheduling", "Seg 09:00 | Ter 14:00",
       "oi quero marcar consulta", "neutral", false, 0, false, true,
-      { clinicAcceptsInsurance: true },
     );
 
     const fullPrompt = identityPrompt + dynamicContext;
@@ -465,7 +426,6 @@ describe("Task #9 — insuranceBifurcationBlock menciona planos na pergunta", ()
     const { identityPrompt, dynamicContext } = await buildSplitPrompt(
       1, patientContext, "scheduling", "Seg 09:00",
       "quero remarcar", "neutral", false, 0, false, true,
-      { clinicAcceptsInsurance: true },
     );
 
     const fullPrompt = identityPrompt + dynamicContext;

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolveAcceptsInsurance } from "../lib/prompt-builder.js";
+import { clinicEffectivelyAcceptsInsurance } from "../lib/prompt-helpers.js";
 
 describe("resolveAcceptsInsurance — master toggle de convênio da clínica", () => {
   describe("clinicAcceptsInsurance = false (master toggle DESLIGADO)", () => {
@@ -175,5 +176,56 @@ describe("resolveAcceptsInsurance — master toggle de convênio da clínica", (
       const shouldAskTriage = connectionPhase && acceptsInsurance && !insuranceTriageComplete;
       expect(shouldAskTriage).toBe(false);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// clinicEffectivelyAcceptsInsurance — fonte única de verdade
+//
+// Regra: a clínica aceita plano se e somente se ≥1 profissional ativo tiver
+// acceptsInsurance===true. settings.acceptsInsurance é legado e ignorado.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("clinicEffectivelyAcceptsInsurance — fonte única de verdade = profissionais ativos", () => {
+  // T1
+  it("lista vazia de profissionais → false", () => {
+    expect(clinicEffectivelyAcceptsInsurance(null, [])).toBe(false);
+  });
+
+  // T2
+  it("1 profissional ativo com acceptsInsurance=true → true", () => {
+    expect(clinicEffectivelyAcceptsInsurance(null, [{ acceptsInsurance: true }])).toBe(true);
+  });
+
+  // T3
+  it("1 profissional ativo com acceptsInsurance=false → false", () => {
+    expect(clinicEffectivelyAcceptsInsurance(null, [{ acceptsInsurance: false }])).toBe(false);
+  });
+
+  // T4
+  it("2 profissionais (1 aceita, 1 não) → true (any é suficiente)", () => {
+    expect(
+      clinicEffectivelyAcceptsInsurance(null, [
+        { acceptsInsurance: false },
+        { acceptsInsurance: true },
+      ]),
+    ).toBe(true);
+  });
+
+  // T5 — BUG REAL
+  it("BUG REAL: settings.acceptsInsurance=true mas nenhum profissional aceita → false", () => {
+    // Este é o cenário exato do bug: o OR entre settings e profissionais
+    // retornava TRUE mesmo sem nenhum profissional com acceptsInsurance===true.
+    expect(
+      clinicEffectivelyAcceptsInsurance(
+        { acceptsInsurance: true },
+        [{ acceptsInsurance: false }],
+      ),
+    ).toBe(false);
+  });
+
+  // T6
+  it("settings null/undefined não afeta o resultado — só profissionais importam", () => {
+    expect(clinicEffectivelyAcceptsInsurance(undefined, [{ acceptsInsurance: true }])).toBe(true);
+    expect(clinicEffectivelyAcceptsInsurance(null, [{ acceptsInsurance: false }])).toBe(false);
   });
 });
