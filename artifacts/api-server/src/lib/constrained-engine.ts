@@ -504,7 +504,7 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
 
   // Se houver violações, o renderer substitui o texto por um fallback seguro
   // (mantém slot/marker/criação de agendamento — só protege o texto exibido).
-  const rendered = applyViolationFallback(renderedRaw, violations.length > 0);
+  const rendered = applyViolationFallback(renderedRaw, violations);
 
   // Task #1 — métricas de observabilidade do contexto restrito.
   const factsBlockPresent = !!(input.factsBlock && input.factsBlock.trim());

@@ -409,14 +409,28 @@ export function renderStructuredResponse(
 }
 
 /**
- * Enforcement: se validateConstrainedReply reportar termos comerciais
- * proibidos (ex.: convênio recebendo "oportunidade unica"), o caller usa
- * este helper para devolver um texto seguro no lugar do reply original.
+ * Enforcement: se validateConstrainedReply reportar violações, substitui o
+ * texto exibido por um texto seguro específico ao tipo de violação.
  *
  * Mantém slot/marker/criação de agendamento, só substitui o texto exibido.
  */
-export function applyViolationFallback(rendered: RenderedReply, hadViolations: boolean): RenderedReply {
-  if (!hadViolations) return rendered;
+export function applyViolationFallback(
+  rendered: RenderedReply,
+  violations: Array<
+    | { type: "insurance_sales_term"; detail: string }
+    | { type: "insurance_mention_when_not_accepted"; detail: string }
+  >,
+): RenderedReply {
+  if (violations.length === 0) return rendered;
+
+  const hasPlanLeak = violations.some((v) => v.type === "insurance_mention_when_not_accepted");
+  if (hasPlanLeak) {
+    const safeText = rendered.markers.length > 0
+      ? joinParts(["Posso te ajudar com agendamento. Como posso te ajudar hoje?", ...rendered.markers])
+      : "Posso te ajudar com agendamento. Como posso te ajudar hoje?";
+    return { ...rendered, text: safeText };
+  }
+
   const safeText = rendered.markers.length > 0
     ? joinParts(["Tudo certo, ja deixei agendado pra voce. Te espero!", ...rendered.markers])
     : "Tudo certo, ja anotei aqui. Qualquer coisa me avisa, ta?";
