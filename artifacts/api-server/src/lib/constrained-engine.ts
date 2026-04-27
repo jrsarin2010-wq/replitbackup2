@@ -219,6 +219,29 @@ function safeParseStructured(raw: string): StructuredAIResponse | null {
 export async function runConstrainedGeneration(input: ConstrainedRunInput): Promise<ConstrainedRunResult> {
   const startTs = Date.now();
 
+  // Detector de urgência via palavras-gatilho. Promove conversationMode para
+  // URGENCIA antes de qualquer outra lógica. O input original não é alterado.
+  const urgencyKeywords = [
+    "morrendo de dor",
+    "muita dor",
+    "dor forte",
+    "socorro",
+    "urgente",
+    "emergência",
+    "emerg",
+    "quebrei o dente",
+    "quebrei meu dente",
+    "quebrei dente",
+    "sangrando",
+    "não consigo mais",
+    "não aguento mais",
+    "não aguento nada",
+  ];
+  const userMessageLower = input.userContent?.toLowerCase() ?? "";
+  const isUrgency = urgencyKeywords.some((kw) => userMessageLower.includes(kw));
+  const effectiveMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "URGENCIA" | null =
+    isUrgency ? "URGENCIA" : input.conversationMode;
+
   // 1. IDs estáveis ───────────────────────────────────────────────────────
   // Bug fix (post-review #2) — quando o paciente é de CONVÊNIO, filtramos
   // slots de profissionais que NÃO atendem convênio. Antes desse filtro
@@ -275,7 +298,7 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     clinicName: input.clinicName,
     aiName: input.aiName,
     personalityHint: input.personalityHint ?? undefined,
-    mode: input.conversationMode,
+    mode: effectiveMode,
     isInsuranceContact: input.isInsuranceContact,
     isFirstContact: input.isFirstContact,
     contactType: input.contactType,

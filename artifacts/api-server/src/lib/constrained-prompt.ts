@@ -45,8 +45,8 @@ export interface ConstrainedPromptContext {
   personalityHint?: string;
   /** Tom curto p/ o reply (ex.: "calorosa", "objetiva"). */
   tone?: string;
-  /** Mode atual (CONVENIO_TRIAGEM, etc). */
-  mode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | null;
+  /** Mode atual (CONVENIO_TRIAGEM, etc). Pode ser sobrescrito para URGENCIA pelo detector do engine. */
+  mode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "URGENCIA" | null;
   isInsuranceContact: boolean;
   isFirstContact: boolean;
   contactType: "lead" | "patient" | string;
