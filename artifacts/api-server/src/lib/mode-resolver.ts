@@ -20,7 +20,8 @@ export type ConversationMode =
   | "PARTICULAR_SPIN"
   | "PACIENTE_AGENDAR"
   | "LEAD_INDICACAO"
-  | "URGENCIA";
+  | "URGENCIA"
+  | "PIX_PENDING";
 
 export interface ModeResolverInput {
   contactType: ContactType;
