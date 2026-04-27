@@ -1,7 +1,15 @@
 import axios from "axios";
+import { createHmac, timingSafeEqual } from "crypto";
 import { logger } from "./logger";
 
 const ABACATEPAY_BASE = "https://api.abacatepay.com/v1";
+
+// Webhook secret deve estar em .env
+const ABACATEPAY_WEBHOOK_SECRET = process.env.ABACATEPAY_WEBHOOK_SECRET || "";
+
+if (!ABACATEPAY_WEBHOOK_SECRET && process.env.NODE_ENV === "production") {
+  throw new Error("ABACATEPAY_WEBHOOK_SECRET não configurado");
+}
 
 export interface CreditPackage {
   id: string;
@@ -118,6 +126,46 @@ async function getOrCreateCustomer(apiKey: string, params: { name: string; email
     if (existing) return existing.id;
     throw err;
   }
+}
+
+/**
+ * Verifica assinatura HMAC-SHA256 do webhook AbacatePay.
+ * Formato: signature = base64(HMAC-SHA256(payload, secret))
+ * Usa timingSafeEqual para evitar timing attacks.
+ */
+export function verifyWebhookSignature(payload: string, signature: string): boolean {
+  if (!ABACATEPAY_WEBHOOK_SECRET) return false;
+  const expected = createHmac("sha256", ABACATEPAY_WEBHOOK_SECRET)
+    .update(payload)
+    .digest("base64");
+  try {
+    return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
+export interface WebhookPayload {
+  event: string;
+  billingId: string | undefined;
+  status: string | undefined;
+  paidAt: string | undefined;
+  amount: number | undefined;
+}
+
+/**
+ * Extrai campos relevantes do payload bruto do webhook AbacatePay.
+ * Formato esperado: { event, data: { billingId, status, paidAt, amount } }
+ */
+export function parseWebhookPayload(payload: Record<string, unknown>): WebhookPayload {
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  return {
+    event: typeof payload.event === "string" ? payload.event : "",
+    billingId: typeof data.billingId === "string" ? data.billingId : undefined,
+    status: typeof data.status === "string" ? data.status : undefined,
+    paidAt: typeof data.paidAt === "string" ? data.paidAt : undefined,
+    amount: typeof data.amount === "number" ? data.amount : undefined,
+  };
 }
 
 interface CreateGenericBillingParams {
