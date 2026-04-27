@@ -22,6 +22,7 @@ import { buildGpt5Extras, bumpTokensForLowReasoning } from "./ai-tuning";
 import { recordAiCall } from "./ai-cost-metrics";
 import type { AvailableSlot } from "./schedule-engine";
 import type { AppointmentExtraction } from "./appointment-extractor";
+import { filterValidSlots, type ProfessionalSchedule } from "./schedule-validator";
 import {
   assignSlotIds,
   rankSlotsForRelevance,
@@ -109,6 +110,10 @@ export interface ConstrainedRunInput {
    * `getSlotOffset` antes de chamar.
    */
   slotOffset?: number;
+  /** Ficha do profissional principal (dias de atendimento e duração de slot). */
+  professional?: { workingDays: string; insuranceDays?: string | null; slotDurationMinutes: number } | null;
+  /** Procedimento solicitado (para validação de duração). */
+  procedure?: { durationMinutes: number } | null;
 }
 
 export interface ConstrainedRunResult {
@@ -242,6 +247,22 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   const effectiveMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "LEAD_INDICACAO" | "URGENCIA" | null =
     isUrgency ? "URGENCIA" : input.conversationMode;
 
+  // Filtrar slots respeitando a ficha do profissional (dias de atendimento e duração).
+  const professionalSchedule: ProfessionalSchedule = {
+    workingDays: input.professional?.workingDays ?? "1,2,3,4,5",
+    insuranceDays: input.professional?.insuranceDays,
+    slotDurationMinutes: input.professional?.slotDurationMinutes ?? 30,
+  };
+  const procedureDuration = input.procedure
+    ? { durationMinutes: input.procedure.durationMinutes }
+    : undefined;
+  const validSlots = filterValidSlots(
+    input.availableSlots,
+    effectiveMode,
+    professionalSchedule,
+    procedureDuration,
+  );
+
   // 1. IDs estáveis ───────────────────────────────────────────────────────
   // Bug fix (post-review #2) — quando o paciente é de CONVÊNIO, filtramos
   // slots de profissionais que NÃO atendem convênio. Antes desse filtro
@@ -252,8 +273,8 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     input.professionals.map((p) => [p.id, p.acceptsInsurance === true]),
   );
   const insuranceFilteredRaw = input.isInsuranceContact
-    ? input.availableSlots.filter((s) => profAcceptsInsurance.get(s.professionalId) === true)
-    : input.availableSlots;
+    ? validSlots.filter((s) => profAcceptsInsurance.get(s.professionalId) === true)
+    : validSlots;
 
   // Post-review #3 — ranking determinístico de relevância ANTES da paginação:
   // (a) profissional preferido (primeiro em `professionals` — quando o
