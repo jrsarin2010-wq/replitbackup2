@@ -114,6 +114,10 @@ export interface ConstrainedRunInput {
   professional?: { workingDays: string; insuranceDays?: string | null; slotDurationMinutes: number } | null;
   /** Procedimento solicitado (para validação de duração). */
   procedure?: { durationMinutes: number } | null;
+  /** Clínica aceita parcelamento (vindo de dental_settings). */
+  settingsAcceptsInstallments?: boolean | null;
+  /** Máximo de parcelas aceitas (vindo de dental_settings). */
+  settingsMaxInstallments?: number | null;
 }
 
 export interface ConstrainedRunResult {
@@ -333,6 +337,8 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     todayLabel: input.todayLabel,
     recentHistory: input.recentHistoryText ?? null,
     factsBlock: input.factsBlock ?? null,
+    acceptsInstallments: input.settingsAcceptsInstallments ?? null,
+    maxInstallments: input.settingsMaxInstallments ?? null,
   });
 
   const messages = [

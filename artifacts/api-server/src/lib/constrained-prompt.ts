@@ -83,6 +83,10 @@ export interface ConstrainedPromptContext {
   factsBlock?: string | null;
   /** Procedimento solicitado (para exibir regra de duração no prompt). */
   procedure?: { name: string; durationMinutes: number } | null;
+  /** Clínica aceita parcelamento? */
+  acceptsInstallments?: boolean | null;
+  /** Máximo de parcelas aceitas. */
+  maxInstallments?: number | null;
 }
 
 export function buildConstrainedPrompt(ctx: ConstrainedPromptContext): string {
@@ -255,6 +259,22 @@ So ofereça horarios que cabem essa duracao.
 
 A lista de horarios disponiveis ja foi filtrada pra voce — todos respeitam a duracao do procedimento.
 ` : ""}
+=== PARCELAMENTO ===
+${ctx.acceptsInstallments && ctx.maxInstallments && ctx.maxInstallments > 1 ? `A clinica aceita parcelamento em ate ${ctx.maxInstallments}x.
+
+Quando o paciente perguntar valor:
+- Mencione o valor a vista PRIMEIRO
+- DEPOIS ofereça parcelamento: "Posso parcelar em ate ${ctx.maxInstallments}x se preferir"
+- NUNCA force o parcelamento — so ofereça como opcao
+
+Exemplo:
+Lead: "Quanto custa a limpeza?"
+IA: "A limpeza e R$ 300. Posso parcelar em ate ${ctx.maxInstallments}x se preferir."` : `A clinica trabalha com pagamento a vista apenas. NAO mencione parcelamento.
+
+Exemplo:
+Lead: "Quanto custa a consulta?"
+IA: "A consulta e R$ 200, a vista."`}
+
 === MODO ATIVO: ${ctx.mode ?? "PADRAO"} ===${modeBlock}
 
 === EXEMPLOS DE DIALOGO ===
