@@ -41,6 +41,7 @@ import {
 } from "./structured-renderer";
 import { validateConstrainedReply } from "./response-validator";
 import { clinicEffectivelyAcceptsInsurance } from "./prompt-helpers";
+import { sendTelegramMessage } from "./telegram";
 import {
   persistConfirmSlotSignal,
   persistOfferSlotsSignal,
@@ -170,6 +171,12 @@ export interface ConstrainedRunInput {
   settingsPixAmount?: string | null;
   /** Titular da conta PIX. */
   settingsPixHolderName?: string | null;
+  /** Token do bot Telegram da clínica. */
+  settingsTelegramBotToken?: string | null;
+  /** Chat ID do Telegram do dentista. */
+  settingsTelegramChatId?: string | null;
+  /** Habilita escalação via Telegram para urgências. */
+  settingsTelegramEscalationEnabled?: boolean | null;
 }
 
 export interface ConstrainedRunResult {
@@ -302,6 +309,27 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   const isUrgency = urgencyKeywords.some((kw) => userMessageLower.includes(kw));
   let effectiveMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "LEAD_INDICACAO" | "URGENCIA" | "PIX_PENDING" | null =
     isUrgency ? "URGENCIA" : input.conversationMode;
+
+  // Alerta Telegram em tempo real quando urgência é detectada.
+  // Dispara ANTES da resposta da IA — dentista vê primeiro.
+  // Falha silenciosa: não bloqueia a conversa se Telegram estiver indisponível.
+  if (
+    isUrgency &&
+    input.settingsTelegramEscalationEnabled &&
+    input.settingsTelegramBotToken &&
+    input.settingsTelegramChatId
+  ) {
+    const preview = (input.userContent ?? "").substring(0, 100);
+    const alertText =
+      `🚨 URGENCIA DETECTADA\n\n` +
+      `Lead: ${input.contactName || "Anônimo"}\n` +
+      `Telefone: ${input.contactPhone || "N/A"}\n` +
+      `Mensagem: "${preview}"\n\n` +
+      `Clique na conversa pra responder!`;
+    sendTelegramMessage(input.settingsTelegramBotToken, input.settingsTelegramChatId, alertText).catch(
+      (err) => logger.warn({ err, tenantId: input.tenantId }, "Telegram urgency alert failed"),
+    );
+  }
 
   // Se estamos aguardando PIX (PIX_PENDING) e recebemos comprovante, mantemos
   // o modo para que o prompt renderize a confirmação de pagamento.
