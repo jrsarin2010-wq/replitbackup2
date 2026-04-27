@@ -101,6 +101,29 @@ export function detectLeadEscape(userMessage: string): boolean {
   return escapeKeywords.some((keyword) => messageLower.includes(keyword));
 }
 
+/**
+ * Detecta quando lead pergunta pela localização da clínica.
+ * Usado para ativar a ação SEND_MAPS no prompt restrito.
+ */
+export function detectMapQuery(userMessage: string): boolean {
+  const mapKeywords = [
+    "onde fica",
+    "onde é",
+    "qual é o endereço",
+    "qual o endereço",
+    "endereço",
+    "localização",
+    "fica onde",
+    "como chego",
+    "como vou",
+    "qual a localização",
+    "vocês ficam onde",
+    "localizada onde",
+  ];
+  const messageLower = userMessage?.toLowerCase() || "";
+  return mapKeywords.some((keyword) => messageLower.includes(keyword));
+}
+
 export interface ConstrainedRunInput {
   client: OpenAI;
   tenantId: number;
@@ -207,6 +230,7 @@ const ALLOWED_ACTIONS = new Set([
   "ASK_INFO",
   "ESCALATE",
   "JUST_REPLY",
+  "SEND_MAPS",
 ]);
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -278,6 +302,9 @@ function safeParseStructured(raw: string): StructuredAIResponse | null {
       // Task #1 — strict schema garante presença, mas defendemos contra
       // payloads não-strict (fallback path, modelos que retornam parcial).
       request_more_slots: obj.request_more_slots === true,
+      mapUrl: typeof obj.mapUrl === "string" ? obj.mapUrl : null,
+      address: typeof obj.address === "string" ? obj.address : null,
+      mapsMessage: typeof obj.mapsMessage === "string" ? obj.mapsMessage : null,
     };
   } catch {
     return null;
@@ -330,6 +357,9 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
       (err) => logger.warn({ err, tenantId: input.tenantId }, "Telegram urgency alert failed"),
     );
   }
+
+  // Detecta se lead perguntou sobre localização da clínica.
+  const isMapQuery = detectMapQuery(input.userContent);
 
   // Se estamos aguardando PIX (PIX_PENDING) e recebemos comprovante, mantemos
   // o modo para que o prompt renderize a confirmação de pagamento.
@@ -498,6 +528,9 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
       // StructuredAIResponse (campo obrigatório). Reset implícito de offset
       // garante que próxima oferta começa do início.
       request_more_slots: false,
+      mapUrl: null,
+      address: null,
+      mapsMessage: null,
     };
 
   // 6. Render determinístico ──────────────────────────────────────────────
