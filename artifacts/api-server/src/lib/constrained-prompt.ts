@@ -95,6 +95,8 @@ export interface ConstrainedPromptContext {
   pixAmount?: string | null;
   /** Titular da conta PIX. */
   pixHolderName?: string | null;
+  /** Lead sinalizou intenção de sair/desistir (detectLeadEscape=true). */
+  leadIsEscaping?: boolean | null;
 }
 
 export function buildConstrainedPrompt(ctx: ConstrainedPromptContext): string {
@@ -282,7 +284,25 @@ IA: "A limpeza e R$ 300. Posso parcelar em ate ${ctx.maxInstallments}x se prefer
 Exemplo:
 Lead: "Quanto custa a consulta?"
 IA: "A consulta e R$ 200, a vista."`}
+${ctx.leadIsEscaping ? `
+═══════════════════════════════════════════════════════════════════
+=== RESGATE DE LEAD ===
+═══════════════════════════════════════════════════════════════════
 
+Lead está pensando em sair ou desistir.
+
+ESTRATÉGIA:
+1. NÃO force agendamento — mas não desista também
+2. Ofereça 1 horário tentativo: "Deixa eu reservar um horário pra você não perder a oportunidade?"
+3. Se lead recusar novamente: "Tá bom, mas fico aqui se mudar de ideia. É só chamar!"
+4. Não mencione PIX (se mode A, já pediu antes)
+
+Exemplo:
+Lead: "vou pensar e te ligo depois"
+IA: "Tá bom! Mas deixa eu reservar segunda às 14h pra você? Sem compromisso — se não puder, é só me avisar."
+
+Nunca pareça desesperado. Qualidade > volume.
+` : ``}
 === PIX ANTECIPADO ===
 ${ctx.pixMode === "OBRIGATORIO" ? `A clinica EXIGE PIX antecipado para confirmar agendamento.
 
