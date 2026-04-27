@@ -87,6 +87,14 @@ export interface ConstrainedPromptContext {
   acceptsInstallments?: boolean | null;
   /** Máximo de parcelas aceitas. */
   maxInstallments?: number | null;
+  /** Modo PIX da clínica: OBRIGATORIO | OPCIONAL | DESATIVADO. */
+  pixMode?: "OBRIGATORIO" | "OPCIONAL" | "DESATIVADO" | null;
+  /** Chave PIX da clínica. */
+  pixKey?: string | null;
+  /** Valor padrão do PIX (string, ex: "200.00"). */
+  pixAmount?: string | null;
+  /** Titular da conta PIX. */
+  pixHolderName?: string | null;
 }
 
 export function buildConstrainedPrompt(ctx: ConstrainedPromptContext): string {
@@ -274,6 +282,33 @@ IA: "A limpeza e R$ 300. Posso parcelar em ate ${ctx.maxInstallments}x se prefer
 Exemplo:
 Lead: "Quanto custa a consulta?"
 IA: "A consulta e R$ 200, a vista."`}
+
+=== PIX ANTECIPADO ===
+${ctx.pixMode === "OBRIGATORIO" ? `A clinica EXIGE PIX antecipado para confirmar agendamento.
+
+Quando o lead ACEITAR um horario:
+1. Confirme a oferta: "Perfeito! Reservado pra [dia] as [hora]?"
+2. Se aceitar, IMEDIATAMENTE diga: "Pra confirmar, preciso do PIX antecipado de R$ ${ctx.pixAmount || "200"}. Aqui ta a chave: ${ctx.pixKey || "chave-pix"}"
+3. Peca o comprovante: "Me envia o comprovante quando puder, ta?"
+4. QUANDO receber comprovante (texto mencionando "comprovante", "transferi", "paguei", etc): "Pagamento recebido! Ta confirmado pra [dia] as [hora]. Te esperamos!"
+5. SE nao receber em 30min: "Oi! Ainda aguardando o comprovante do PIX pra confirmar. Consegue enviar?"
+6. SE nao receber em 24h: "Infelizmente tive que liberar esse horario. Tenho outro disponivel?"
+
+NUNCA confirme agendamento sem o comprovante em Modo OBRIGATORIO.
+
+Exemplo:
+Lead: "Perfeito, segunda as 14h!"
+IA: "Otimo! Pra confirmar, preciso do PIX de R$ ${ctx.pixAmount || "200"}. Chave: ${ctx.pixKey || "chave-pix"}. Me envia o comprovante!"
+Lead: "aqui esta o comprovante"
+IA: "Pagamento recebido! Confirmado pra segunda as 14h. Te esperamos!"` : ctx.pixMode === "OPCIONAL" ? `A clinica OFERECE PIX opcional — so mencione se o lead pedir.
+
+Quando o lead ACEITAR um horario:
+- Confirme direto: "Perfeito! Ta confirmado pra [dia] as [hora]. Te esperamos!"
+- NAO ofereça PIX automaticamente
+
+APENAS se o lead perguntar ("Posso pagar antes?", "Tem PIX?", etc):
+- Responda: "Claro! Aqui ta a chave PIX: ${ctx.pixKey || "chave-pix"}"
+- Sem pedir comprovante` : `PIX ESTA DESATIVADO. NAO mencione PIX em nenhuma circunstancia. Se o lead perguntar sobre pagamento antecipado, diga: "A gente marca e confirma na clinica!"`}
 
 === MODO ATIVO: ${ctx.mode ?? "PADRAO"} ===${modeBlock}
 
