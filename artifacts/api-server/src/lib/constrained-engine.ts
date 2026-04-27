@@ -63,7 +63,7 @@ export interface ConstrainedRunInput {
   contactPhone: string;
   contactType: string;
   intent: string;
-  conversationMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | null;
+  conversationMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "LEAD_INDICACAO" | null;
   isInsuranceContact: boolean;
   isFirstContact: boolean;
   /** Slots crus do schedule-engine (já filtrados pelo modo). */
@@ -239,7 +239,7 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   ];
   const userMessageLower = input.userContent?.toLowerCase() ?? "";
   const isUrgency = urgencyKeywords.some((kw) => userMessageLower.includes(kw));
-  const effectiveMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "URGENCIA" | null =
+  const effectiveMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "LEAD_INDICACAO" | "URGENCIA" | null =
     isUrgency ? "URGENCIA" : input.conversationMode;
 
   // 1. IDs estáveis ───────────────────────────────────────────────────────

@@ -693,6 +693,7 @@ export async function processIncomingMessage(
       contactType: context.contactType,
       clinicAcceptsInsurance,
       insuranceMode: triageMode,
+      userMessage: incomingMessage,
     });
     conversationMode = r.mode;
     conversationModeReason = r.reason;

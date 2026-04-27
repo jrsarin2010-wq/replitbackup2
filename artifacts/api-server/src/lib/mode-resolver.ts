@@ -18,12 +18,16 @@ export type ConversationMode =
   | "CONVENIO_TRIAGEM"
   | "CONVENIO_AGENDAR"
   | "PARTICULAR_SPIN"
-  | "PACIENTE_AGENDAR";
+  | "PACIENTE_AGENDAR"
+  | "LEAD_INDICACAO"
+  | "URGENCIA";
 
 export interface ModeResolverInput {
   contactType: ContactType;
   clinicAcceptsInsurance: boolean;
   insuranceMode: InsuranceModeResult;
+  /** Mensagem atual do usuário para detecção de indicação. Opcional — omitir desativa detecção. */
+  userMessage?: string | null;
 }
 
 export interface ModeResolverResult {
@@ -34,6 +38,26 @@ export interface ModeResolverResult {
 
 export function resolveConversationMode(input: ModeResolverInput): ModeResolverResult {
   const { contactType, clinicAcceptsInsurance, insuranceMode } = input;
+
+  // Detector de indicação: warm lead prioritário. Prioridade ALTA — entra antes
+  // de qualquer lógica de plano/particular.
+  const indicationKeywords = [
+    "indicou",
+    "indicação",
+    "me passou",
+    "me falou de vocês",
+    "recomendou",
+    "recomendação",
+    "amigo meu falou",
+    "colega falou",
+    "alguém me indicou",
+    "vi indicação",
+  ];
+  const userMessageLower = input.userMessage?.toLowerCase() ?? "";
+  const isIndication = userMessageLower.length > 0 && indicationKeywords.some((kw) => userMessageLower.includes(kw));
+  if (isIndication) {
+    return { mode: "LEAD_INDICACAO", reason: "indication_keyword" };
+  }
 
   // Override de conflito: se o lead acabou de declarar EXPLICITAMENTE particular
   // na mensagem atual e a evidência de convênio vem APENAS de fonte fraca
@@ -82,4 +106,6 @@ export const ALL_MODES: ConversationMode[] = [
   "CONVENIO_AGENDAR",
   "PARTICULAR_SPIN",
   "PACIENTE_AGENDAR",
+  "LEAD_INDICACAO",
+  "URGENCIA",
 ];
