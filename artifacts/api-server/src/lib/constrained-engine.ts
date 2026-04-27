@@ -77,6 +77,29 @@ export function detectProofOfPayment(userMessage: string): boolean {
   return proofKeywords.some((keyword) => messageLower.includes(keyword));
 }
 
+/**
+ * Detecta quando lead quer sair / desistir / "pensar" antes de agendar.
+ * Usado para ativar bloco de resgate no prompt.
+ */
+export function detectLeadEscape(userMessage: string): boolean {
+  const escapeKeywords = [
+    "vou pensar",
+    "depois",
+    "ligo depois",
+    "deixa eu pensar",
+    "preciso pensar",
+    "pensa em",
+    "vou ligar",
+    "lembro",
+    "posso ligar pra você",
+    "não sei",
+    "ainda não",
+    "em breve",
+  ];
+  const messageLower = userMessage?.toLowerCase() || "";
+  return escapeKeywords.some((keyword) => messageLower.includes(keyword));
+}
+
 export interface ConstrainedRunInput {
   client: OpenAI;
   tenantId: number;
