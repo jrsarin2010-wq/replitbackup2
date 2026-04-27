@@ -252,6 +252,22 @@ export async function addCredits(
   });
 }
 
+/** Chars por minuto de áudio (taxa de fala normal). */
+const CHARS_PER_MINUTE = 1_350;
+
+/**
+ * Credita minutos de áudio ao tenant após pagamento de recarga confirmado.
+ * Converte minutos → chars e usa addCredits para manter trilha de transação.
+ */
+export async function addAudioMinutes(
+  tenantId: number,
+  minutes: number,
+  billingId: string,
+): Promise<{ newBalance: number }> {
+  const chars = minutes * CHARS_PER_MINUTE;
+  return addCredits(tenantId, chars, `Recarga de áudio +${minutes}min [billing:${billingId}]`);
+}
+
 export async function resetAllMonthlyQuotas(): Promise<number> {
   const now = new Date();
   const result = await db

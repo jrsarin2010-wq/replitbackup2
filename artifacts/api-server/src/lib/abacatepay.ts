@@ -304,6 +304,79 @@ export async function createPixBilling(params: CreateBillingParams): Promise<Aba
   }
 }
 
+// Pacotes de recarga de áudio. Preços em centavos; minutos convertidos para
+// chars no momento da creditação (1 min ≈ 1350 chars, constante de credit-manager.ts).
+export const AUDIO_RECHARGE_PACKAGES = {
+  starter:  { amount: 2500, minutes: 30,  description: "OdontoFlow - Recarga de áudio (+30 min)" },
+  standard: { amount: 4000, minutes: 60,  description: "OdontoFlow - Recarga de áudio (+1 hora)" },
+  pro:      { amount: 9000, minutes: 300, description: "OdontoFlow - Recarga de áudio (+5 horas)" },
+} as const;
+
+export type AudioRechargePackageId = keyof typeof AUDIO_RECHARGE_PACKAGES;
+
+interface AudioRechargeParams {
+  customerId: string;
+  packageId: AudioRechargePackageId;
+  tenantId: number;
+}
+
+export interface AudioRechargeBillingResult {
+  billingId: string;
+  url?: string;
+  status: string;
+  minutes: number;
+}
+
+/**
+ * Cria cobrança one-time via AbacatePay para recarga de minutos de áudio.
+ * A creditação dos minutos ocorre no webhook após status=PAID.
+ */
+export async function createAudioRechargePixBilling(
+  params: AudioRechargeParams,
+): Promise<AudioRechargeBillingResult | { error: string }> {
+  const apiKey = process.env.ABACATEPAY_API_KEY;
+  if (!apiKey) {
+    return { error: "Pagamentos ainda não configurados. Entre em contato com o suporte." };
+  }
+
+  const pkg = AUDIO_RECHARGE_PACKAGES[params.packageId];
+
+  try {
+    const res = await axios.post(
+      `${ABACATEPAY_BASE}/billing/create`,
+      {
+        customerId: params.customerId,
+        amount: pkg.amount,
+        description: pkg.description,
+        frequency: "ONE_TIME",
+        metadata: {
+          tenantId: String(params.tenantId),
+          packageId: params.packageId,
+          minutes: String(pkg.minutes),
+          type: "audio_recharge",
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    const data = (res.data as { data: { id: string; url?: string; status: string } }).data;
+    return { billingId: data.id, url: data.url, status: data.status, minutes: pkg.minutes };
+  } catch (err: unknown) {
+    const axiosErr = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
+    logger.error(
+      { err, packageId: params.packageId, tenantId: params.tenantId },
+      "AbacatePay audio recharge billing creation failed",
+    );
+    const errorMsg = axiosErr?.response?.data?.error || axiosErr?.response?.data?.message || axiosErr?.message || "Erro ao gerar cobrança de recarga";
+    return { error: errorMsg };
+  }
+}
+
 // Mapeamento de planos gerenciados → valores em centavos e nomes para billing.
 // Fonte de verdade de preços: plan-pricing.ts (PLAN_PRICES_CENTS).
 const PLAN_PRICING = {
