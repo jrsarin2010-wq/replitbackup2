@@ -374,6 +374,7 @@ ${profsBlock}
 - ASK_INFO: pedir informacao faltante (nome, telefone, plano, queixa, etc).
 - ESCALATE: passar para humano/equipe da clinica.
 - JUST_REPLY: apenas conversa empatica, sem ofertar/confirmar/cobrar.
+- SEND_MAPS: enviar link do Google Maps com endereço da clínica. Use quando lead perguntar "onde fica?", "qual o endereço?", "como chego?". mapUrl e address são obrigatórios; mapsMessage é a frase antes do link.
 
 === REGRAS ABSOLUTAS DE SAIDA ===
 1. Responda EXCLUSIVAMENTE em JSON com os campos: action, slot_ids (array de IDs), professional_id (string ou null), reply_text (string), request_more_slots (boolean).
