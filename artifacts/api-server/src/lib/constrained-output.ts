@@ -31,7 +31,8 @@ export type ConstrainedAction =
   | "SEND_FEE"
   | "ASK_INFO"
   | "ESCALATE"
-  | "JUST_REPLY";
+  | "JUST_REPLY"
+  | "SEND_MAPS";
 
 export interface SlotWithId extends AvailableSlot {
   /** ID estável dentro do turno (s1, s2, …). */
@@ -76,6 +77,12 @@ export interface StructuredAIResponse {
    * `request_more_slots: false` para honrar o contrato.
    */
   request_more_slots: boolean;
+  /** Google Maps URL (https://maps.google.com/?q=…). Preenchido apenas quando action === "SEND_MAPS". */
+  mapUrl: string | null;
+  /** Endereço textual da clínica. Preenchido apenas quando action === "SEND_MAPS". */
+  address: string | null;
+  /** Mensagem conversacional antes do link. Preenchido apenas quando action === "SEND_MAPS". */
+  mapsMessage: string | null;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -195,6 +202,7 @@ export function buildResponseSchema(
               "ASK_INFO",
               "ESCALATE",
               "JUST_REPLY",
+              "SEND_MAPS",
             ],
             description: "Ação determinística que o servidor vai executar.",
           },
@@ -221,8 +229,23 @@ export function buildResponseSchema(
             description:
               "Coloque true quando o paciente recusou os horários mostrados e quer ver mais opções da agenda. Sempre false para CONFIRM_SLOT, SEND_PIX, SEND_FEE, ESCALATE. O servidor pagina os próximos slots no turno seguinte.",
           },
+          mapUrl: {
+            anyOf: [{ type: "string" }, { type: "null" }],
+            description:
+              "Google Maps URL (https://maps.google.com/?q=<endereço_urlencoded>). Preencher apenas para SEND_MAPS; null nos demais casos.",
+          },
+          address: {
+            anyOf: [{ type: "string" }, { type: "null" }],
+            description:
+              "Endereço textual da clínica (ex.: 'Rua X, 123, Fortaleza'). Preencher apenas para SEND_MAPS; null nos demais casos.",
+          },
+          mapsMessage: {
+            anyOf: [{ type: "string" }, { type: "null" }],
+            description:
+              "Mensagem conversacional antes do link (ex.: 'Aqui está nossa localização!'). Preencher apenas para SEND_MAPS; null nos demais casos.",
+          },
         },
-        required: ["action", "slot_ids", "professional_id", "reply_text", "request_more_slots"],
+        required: ["action", "slot_ids", "professional_id", "reply_text", "request_more_slots", "mapUrl", "address", "mapsMessage"],
         additionalProperties: false,
       },
     },
