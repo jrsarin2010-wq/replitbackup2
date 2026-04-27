@@ -139,6 +139,14 @@ export interface ConstrainedRunInput {
   settingsAcceptsInstallments?: boolean | null;
   /** Máximo de parcelas aceitas (vindo de dental_settings). */
   settingsMaxInstallments?: number | null;
+  /** Modo PIX da clínica: OBRIGATORIO | OPCIONAL | DESATIVADO. */
+  settingsPixMode?: string | null;
+  /** Chave PIX da clínica. */
+  settingsPixKey?: string | null;
+  /** Valor padrão do PIX antecipado (string, ex: "200.00"). */
+  settingsPixAmount?: string | null;
+  /** Titular da conta PIX. */
+  settingsPixHolderName?: string | null;
 }
 
 export interface ConstrainedRunResult {
@@ -367,6 +375,10 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     factsBlock: input.factsBlock ?? null,
     acceptsInstallments: input.settingsAcceptsInstallments ?? null,
     maxInstallments: input.settingsMaxInstallments ?? null,
+    pixMode: (input.settingsPixMode as "OBRIGATORIO" | "OPCIONAL" | "DESATIVADO" | null) ?? "DESATIVADO",
+    pixKey: input.settingsPixKey ?? null,
+    pixAmount: input.settingsPixAmount ?? "0",
+    pixHolderName: input.settingsPixHolderName ?? null,
   });
 
   const messages = [
