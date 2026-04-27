@@ -84,6 +84,22 @@ function toOwnerGender(v: string | null | undefined): OwnerGender {
   return v === "male" || v === "female" || v === "unspecified" ? v : null;
 }
 
+function buildPersonalityHint(preset: string | null | undefined): string | null {
+  if (!preset) return null;
+  switch (preset.toLowerCase()) {
+    case "acolhedora":
+      return "Tom acolhedor, caloroso e empático. Faz o paciente sentir-se cuidado.";
+    case "profissional":
+      return "Tom profissional, claro e objetivo. Mantém formalidade educada.";
+    case "comercial":
+      return "Tom comercial, persuasivo e vendedor. Cria conexão e conduz para agendamento.";
+    case "personalizada":
+      return null;
+    default:
+      return null;
+  }
+}
+
 const PEAK_TIMEOUT_MS = 8_000;
 
 /**
@@ -1312,7 +1328,7 @@ export async function processIncomingMessage(
         insurancePlans: settingsForConstrained?.insurancePlans ?? null,
         clinicName: settingsForConstrained?.clinicName ?? "a clinica",
         aiName: settingsForConstrained?.aiName ?? "Sofia",
-        personalityHint: null,
+        personalityHint: buildPersonalityHint(settingsForConstrained?.personalityType),
         settingsConsultationFee:
           settingsForConstrained?.consultationFee != null
             ? String(settingsForConstrained.consultationFee)
