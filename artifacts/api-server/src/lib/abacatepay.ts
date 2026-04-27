@@ -303,3 +303,73 @@ export async function createPixBilling(params: CreateBillingParams): Promise<Aba
     return { error: errorMsg };
   }
 }
+
+// Mapeamento de planos gerenciados → valores em centavos e nomes para billing.
+// Fonte de verdade de preços: plan-pricing.ts (PLAN_PRICES_CENTS).
+const PLAN_PRICING = {
+  basic:     { amount: 9700,  name: "Básico" },    // R$97
+  essencial: { amount: 19700, name: "Essencial" }, // R$197
+  pro:       { amount: 44700, name: "Pro" },        // R$447
+} as const;
+
+interface RecurringBillingParams {
+  customerId: string;
+  planId: "basic" | "essencial" | "pro";
+}
+
+export interface RecurringBillingResult {
+  billingId: string;
+  url?: string;
+  status: string;
+}
+
+/**
+ * Cria cobrança recorrente mensal via AbacatePay para assinatura de plano.
+ * frequency: "MONTHLY" — difere das cobranças one-time de créditos/recargas.
+ */
+export async function createPixBillingRecurring(
+  params: RecurringBillingParams,
+): Promise<RecurringBillingResult | { error: string }> {
+  const apiKey = process.env.ABACATEPAY_API_KEY;
+  if (!apiKey) {
+    return { error: "Pagamentos ainda não configurados. Entre em contato com o suporte." };
+  }
+
+  const plan = PLAN_PRICING[params.planId];
+  const description = `OdontoFlow ${plan.name} - Assinatura mensal`;
+  const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const res = await axios.post(
+      `${ABACATEPAY_BASE}/billing/create`,
+      {
+        customerId: params.customerId,
+        amount: plan.amount,
+        description,
+        frequency: "MONTHLY",
+        dueDate,
+        metadata: {
+          planId: params.planId,
+          type: "subscription",
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    const data = (res.data as { data: { id: string; url?: string; status: string } }).data;
+    return { billingId: data.id, url: data.url, status: data.status };
+  } catch (err: unknown) {
+    const axiosErr = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
+    logger.error(
+      { err, planId: params.planId, customerId: params.customerId },
+      "AbacatePay recurring billing creation failed",
+    );
+    const errorMsg = axiosErr?.response?.data?.error || axiosErr?.response?.data?.message || axiosErr?.message || "Erro ao gerar cobrança recorrente";
+    return { error: errorMsg };
+  }
+}
