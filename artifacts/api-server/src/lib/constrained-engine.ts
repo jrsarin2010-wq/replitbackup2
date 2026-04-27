@@ -56,6 +56,27 @@ import {
 
 const PEAK_TIMEOUT_MS = 8_000;
 
+/**
+ * Detecta se o lead enviou comprovante de pagamento PIX via padrões de texto
+ * comuns em comprovantes/transferências. Usado no modo PIX_PENDING.
+ */
+export function detectProofOfPayment(userMessage: string): boolean {
+  const proofKeywords = [
+    "comprovante",
+    "transferi",
+    "paguei",
+    "comprovei",
+    "enviando comprovante",
+    "aqui tá o comprovante",
+    "aqui ta o comprovante",
+    "segue comprovante",
+    "confirmado",
+    "efetuado",
+  ];
+  const messageLower = userMessage?.toLowerCase() || "";
+  return proofKeywords.some((keyword) => messageLower.includes(keyword));
+}
+
 export interface ConstrainedRunInput {
   client: OpenAI;
   tenantId: number;
@@ -64,7 +85,7 @@ export interface ConstrainedRunInput {
   contactPhone: string;
   contactType: string;
   intent: string;
-  conversationMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "LEAD_INDICACAO" | null;
+  conversationMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "LEAD_INDICACAO" | "PIX_PENDING" | null;
   isInsuranceContact: boolean;
   isFirstContact: boolean;
   /** Slots crus do schedule-engine (já filtrados pelo modo). */
@@ -248,8 +269,15 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   ];
   const userMessageLower = input.userContent?.toLowerCase() ?? "";
   const isUrgency = urgencyKeywords.some((kw) => userMessageLower.includes(kw));
-  const effectiveMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "LEAD_INDICACAO" | "URGENCIA" | null =
+  let effectiveMode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "LEAD_INDICACAO" | "URGENCIA" | "PIX_PENDING" | null =
     isUrgency ? "URGENCIA" : input.conversationMode;
+
+  // Se estamos aguardando PIX (PIX_PENDING) e recebemos comprovante, mantemos
+  // o modo para que o prompt renderize a confirmação de pagamento.
+  // V2: transição para AGENDAMENTO_CONFIRMADO_COM_PIX + validação OCR de valor.
+  if (effectiveMode === "PIX_PENDING" && detectProofOfPayment(input.userContent)) {
+    effectiveMode = "PIX_PENDING";
+  }
 
   // Filtrar slots respeitando a ficha do profissional (dias de atendimento e duração).
   const professionalSchedule: ProfessionalSchedule = {
