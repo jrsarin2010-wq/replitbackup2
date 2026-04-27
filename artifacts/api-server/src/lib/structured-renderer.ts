@@ -386,6 +386,19 @@ function renderJustReply(parsed: StructuredAIResponse, ctx: RenderContext): Rend
   };
 }
 
+function renderSendMaps(parsed: StructuredAIResponse, _ctx: RenderContext): RenderedReply {
+  const url = parsed.mapUrl || "";
+  const address = parsed.address || "Endereço da clínica";
+  const message = parsed.mapsMessage || "Aqui tá nossa localização!";
+  return {
+    text: `${message}\n\n🗺️ ${address}\n${url}`,
+    shouldCreateAppointment: false,
+    chosenSlot: null,
+    chosenProfessional: null,
+    markers: [],
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Dispatcher público
 // ─────────────────────────────────────────────────────────────────────────
@@ -398,6 +411,7 @@ const DISPATCH: Record<ConstrainedAction, (p: StructuredAIResponse, c: RenderCon
   ASK_INFO: renderAskInfo,
   ESCALATE: renderEscalate,
   JUST_REPLY: renderJustReply,
+  SEND_MAPS: renderSendMaps,
 };
 
 export function renderStructuredResponse(
