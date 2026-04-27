@@ -81,6 +81,8 @@ export interface ConstrainedPromptContext {
    * sanitizado por `buildFactsBlock`. null quando não há nada a injetar.
    */
   factsBlock?: string | null;
+  /** Procedimento solicitado (para exibir regra de duração no prompt). */
+  procedure?: { name: string; durationMinutes: number } | null;
 }
 
 export function buildConstrainedPrompt(ctx: ConstrainedPromptContext): string {
@@ -243,7 +245,16 @@ LINGUAGEM:
 - NUNCA mencione "Telegram" — diga "vou falar com o doutor".
 - Evite emojis (maximo 1 em momentos de muito acolhimento emocional).
 - Fale como amiga, nao como maquina.
+${ctx.procedure ? `
+=== DURACAO E DISPONIBILIDADE ===
+O procedimento de ${ctx.procedure.name} exige ${ctx.procedure.durationMinutes} minutos.
+So ofereça horarios que cabem essa duracao.
 
+- Se o horario e de 30 minutos e o procedimento precisa de 60 minutos, NAO ofereça.
+- So ofereça horarios que respeitam a duracao necessaria.
+
+A lista de horarios disponiveis ja foi filtrada pra voce — todos respeitam a duracao do procedimento.
+` : ""}
 === MODO ATIVO: ${ctx.mode ?? "PADRAO"} ===${modeBlock}
 
 === EXEMPLOS DE DIALOGO ===
