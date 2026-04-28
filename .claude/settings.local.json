@@ -5,7 +5,9 @@
       "Bash(pnpm --filter @workspace/api-server test)",
       "Bash(git *)",
       "Bash(printenv DATABASE_URL)",
-      "Bash(awk NR>=1390 && NR<=1420 *)"
+      "Bash(awk NR>=1390 && NR<=1420 *)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm tsc *)"
     ]
   }
 }

@@ -1342,6 +1342,7 @@ export async function processIncomingMessage(
         // Task #1 — injeta resumo persistente da conversa como contexto de paciente.
         patientContext: conversation?.aiSummary ?? null,
         factsBlock: facts.text,
+        clinicAddress: settingsForConstrained?.clinicAddress ?? null,
       });
       reply = cr.reply;
       inlineAppointment = cr.inlineAppointment;

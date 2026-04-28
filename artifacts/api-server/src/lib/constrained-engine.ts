@@ -202,6 +202,10 @@ export interface ConstrainedRunInput {
   settingsTelegramEscalationEnabled?: boolean | null;
   /** Lead sinalizou intenção de sair/desistir (detectLeadEscape=true). */
   leadIsEscaping?: boolean | null;
+  /** Endereço real da clínica (usado em SEND_MAPS para evitar alucinação). */
+  clinicAddress?: string | null;
+  /** URL do Google Maps pré-formatada (opcional, fallback gerado do clinicAddress). */
+  clinicMapUrl?: string | null;
 }
 
 export interface ConstrainedRunResult {
@@ -548,6 +552,8 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     settingsConsultationFee: input.settingsConsultationFee ?? null,
     settingsChargesConsultation: input.settingsChargesConsultation ?? null,
     clinicName: input.clinicName,
+    clinicAddress: input.clinicAddress ?? null,
+    clinicMapUrl: input.clinicMapUrl ?? null,
   };
   const renderedRaw = renderStructuredResponse(parsed, renderCtx);
 

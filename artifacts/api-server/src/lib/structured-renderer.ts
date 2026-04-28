@@ -49,6 +49,10 @@ export interface RenderContext {
   settingsChargesConsultation?: boolean | null;
   /** Nome curto da clínica (já resolvido pelo prompt-builder). */
   clinicName: string;
+  /** Endereço real da clínica (authoritative — usado em SEND_MAPS). */
+  clinicAddress?: string | null;
+  /** URL Google Maps pré-formatada (fallback gerado de clinicAddress quando ausente). */
+  clinicMapUrl?: string | null;
 }
 
 export interface RenderedReply {
@@ -386,12 +390,27 @@ function renderJustReply(parsed: StructuredAIResponse, ctx: RenderContext): Rend
   };
 }
 
-function renderSendMaps(parsed: StructuredAIResponse, _ctx: RenderContext): RenderedReply {
-  const url = parsed.mapUrl || "";
-  const address = parsed.address || "Endereço da clínica";
-  const message = parsed.mapsMessage || "Aqui tá nossa localização!";
+function renderSendMaps(parsed: StructuredAIResponse, ctx: RenderContext): RenderedReply {
+  // SEGURANÇA: SEMPRE usar dados do servidor, NUNCA do LLM (evita alucinação de endereço).
+  const address = ctx.clinicAddress;
+  const mapUrl =
+    ctx.clinicMapUrl ??
+    (address ? `https://maps.google.com/?q=${encodeURIComponent(address)}` : null);
+
+  if (!address || !mapUrl) {
+    return renderJustReply(
+      {
+        ...parsed,
+        reply_text:
+          "Posso te passar o endereço! Mas preciso confirmar alguns detalhes com a clínica primeiro.",
+      },
+      ctx,
+    );
+  }
+
+  const message = parsed.mapsMessage ?? "Aqui tá nossa localização!";
   return {
-    text: `${message}\n\n🗺️ ${address}\n${url}`,
+    text: `${message}\n\n🗺️ ${address}\n${mapUrl}`,
     shouldCreateAppointment: false,
     chosenSlot: null,
     chosenProfessional: null,
