@@ -200,6 +200,8 @@ export interface ConstrainedRunInput {
   settingsTelegramChatId?: string | null;
   /** Habilita escalação via Telegram para urgências. */
   settingsTelegramEscalationEnabled?: boolean | null;
+  /** Lead sinalizou intenção de sair/desistir (detectLeadEscape=true). */
+  leadIsEscaping?: boolean | null;
 }
 
 export interface ConstrainedRunResult {
@@ -361,6 +363,9 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   // Detecta se lead perguntou sobre localização da clínica.
   const isMapQuery = detectMapQuery(input.userContent);
 
+  // Detecta intenção de fuga/desistência para ativar bloco de resgate no prompt.
+  const leadIsEscaping = input.leadIsEscaping ?? detectLeadEscape(input.userContent);
+
   // Se estamos aguardando PIX (PIX_PENDING) e recebemos comprovante, mantemos
   // o modo para que o prompt renderize a confirmação de pagamento.
   // V2: transição para AGENDAMENTO_CONFIRMADO_COM_PIX + validação OCR de valor.
@@ -460,6 +465,7 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     pixKey: input.settingsPixKey ?? null,
     pixAmount: input.settingsPixAmount ?? "0",
     pixHolderName: input.settingsPixHolderName ?? null,
+    leadIsEscaping,
   });
 
   const messages = [
