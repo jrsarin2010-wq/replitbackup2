@@ -46,7 +46,7 @@ export interface ConstrainedPromptContext {
   /** Tom curto p/ o reply (ex.: "calorosa", "objetiva"). */
   tone?: string;
   /** Mode atual (CONVENIO_TRIAGEM, etc). Pode ser sobrescrito para URGENCIA pelo detector do engine. */
-  mode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "URGENCIA" | "LEAD_INDICACAO" | null;
+  mode: "CONVENIO_TRIAGEM" | "CONVENIO_AGENDAR" | "PARTICULAR_SPIN" | "PACIENTE_AGENDAR" | "URGENCIA" | "LEAD_INDICACAO" | "PIX_PENDING" | null;
   isInsuranceContact: boolean;
   isFirstContact: boolean;
   contactType: "lead" | "patient" | string;
@@ -230,6 +230,16 @@ COMPORTAMENTO PACIENTE_AGENDAR (PACIENTE EM TRATAMENTO):
 - Perguntar: "Qual dia fica melhor pra sua proxima consulta?"
 - Oferecer 2 horarios em turnos diferentes.
 - Se houver procedimento cadastrado, referenciar: "Vamos continuar o tratamento."`;
+
+      case "PIX_PENDING":
+        return `
+COMPORTAMENTO PIX_PENDING (AGUARDANDO COMPROVANTE PIX):
+- O lead ja aceitou o horario. Voce aguarda o comprovante PIX para confirmar o agendamento.
+- Tom: gentil, sem pressao.
+- Se o lead mandar mensagem normal: reforce suavemente que precisa do comprovante.
+- Se receber mensagem com "comprovante", "transferi", "paguei" ou similar: responda com entusiasmo confirmando a reserva.
+- Se lead sumir: "Oi! Ainda aguardando o comprovante do PIX pra confirmar sua reserva. Conseguiu enviar?"
+- NUNCA parecas desesperado ou pressuroso.`;
 
       default:
         return "";
