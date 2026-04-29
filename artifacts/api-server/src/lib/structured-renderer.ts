@@ -53,6 +53,8 @@ export interface RenderContext {
   clinicAddress?: string | null;
   /** URL Google Maps pré-formatada (fallback gerado de clinicAddress quando ausente). */
   clinicMapUrl?: string | null;
+  /** Modo PIX da clínica (clinic-level). Quando OBRIGATORIO, CONFIRM_SLOT não cria appointment. */
+  pixMode?: "OBRIGATORIO" | "OPCIONAL" | "DESATIVADO" | null;
 }
 
 export interface RenderedReply {
@@ -235,9 +237,21 @@ function renderConfirmSlot(parsed: StructuredAIResponse, ctx: RenderContext): Re
   const prof = findProfessional(ctx, parsed.professional_id) ?? professionalForSlot(ctx, slot);
   const slotStr = formatSlotForReply(slot, prof?.name);
   const marker = aptCardMarker(slot);
+  const empathy = sanitizeReplyText(parsed.reply_text, ctx);
+
+  // PIX OBRIGATORIO: reserva o slot sem confirmar o agendamento.
+  // Appointment só é criado após comprovante PIX ser detectado pelo engine.
+  if (ctx.pixMode === "OBRIGATORIO") {
+    return {
+      text: joinParts([empathy, `Horario reservado pra ${slotStr}! Pra confirmar, me envia o comprovante PIX.`, marker]),
+      shouldCreateAppointment: false,
+      chosenSlot: slot,
+      chosenProfessional: prof,
+      markers: [marker],
+    };
+  }
 
   // Frase de confirmação determinística + reply_text empático opcional do LLM.
-  const empathy = sanitizeReplyText(parsed.reply_text, ctx);
   const confirm = `Perfeito, ja deixei agendado pra ${slotStr}.`;
   const closer = "Te espero por aqui!";
 

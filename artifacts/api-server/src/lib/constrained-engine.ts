@@ -370,12 +370,10 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
   // Detecta intenção de fuga/desistência para ativar bloco de resgate no prompt.
   const leadIsEscaping = input.leadIsEscaping ?? detectLeadEscape(input.userContent);
 
-  // Se estamos aguardando PIX (PIX_PENDING) e recebemos comprovante, mantemos
-  // o modo para que o prompt renderize a confirmação de pagamento.
+  // Se estamos aguardando PIX (PIX_PENDING) e o lead enviou comprovante,
+  // mantemos o modo — o prompt PIX_PENDING instrui a IA a confirmar o agendamento.
+  // Appointment é criado via inlineAppointment abaixo quando shouldCreateAppointment=true.
   // V2: transição para AGENDAMENTO_CONFIRMADO_COM_PIX + validação OCR de valor.
-  if (effectiveMode === "PIX_PENDING" && detectProofOfPayment(input.userContent)) {
-    effectiveMode = "PIX_PENDING";
-  }
 
   // Filtrar slots respeitando a ficha do profissional (dias de atendimento e duração).
   const professionalSchedule: ProfessionalSchedule = {
@@ -554,8 +552,19 @@ export async function runConstrainedGeneration(input: ConstrainedRunInput): Prom
     clinicName: input.clinicName,
     clinicAddress: input.clinicAddress ?? null,
     clinicMapUrl: input.clinicMapUrl ?? null,
+    pixMode: (input.settingsPixMode as "OBRIGATORIO" | "OPCIONAL" | "DESATIVADO" | null) ?? null,
   };
   const renderedRaw = renderStructuredResponse(parsed, renderCtx);
+
+  // Se pixMode=OBRIGATORIO e CONFIRM_SLOT não criou appointment, o turno atual
+  // está aguardando comprovante — sinaliza PIX_PENDING para uso interno.
+  if (
+    parsed.action === "CONFIRM_SLOT" &&
+    !renderedRaw.shouldCreateAppointment &&
+    input.settingsPixMode === "OBRIGATORIO"
+  ) {
+    effectiveMode = "PIX_PENDING";
+  }
 
   // 7. Inline appointment quando CONFIRM_SLOT ─────────────────────────────
   let inlineAppointment: AppointmentExtraction | null = null;
